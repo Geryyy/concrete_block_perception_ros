@@ -1,0 +1,8 @@
+# Request
+sensor_msgs/Image image
+int32 x
+int32 y
+---
+# Response
+sensor_msgs/Image mask
+sensor_msgs/Image debug_image

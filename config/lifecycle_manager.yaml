@@ -1,0 +1,6 @@
+lifecycle_manager:
+  ros__parameters:
+    autostart: true
+    node_names: ['yolos_segmentor',]
+    use_bond: false
+
