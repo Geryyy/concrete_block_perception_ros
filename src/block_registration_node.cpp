@@ -62,6 +62,7 @@ public:
     }
 
     T_P_C_ = load_T_4x4(calib_yaml);
+    K_ = load_camera_matrix(calib_yaml);
     templates_ = load_templates(template_dir);
 
     service_ = create_service<RegisterBlock>(

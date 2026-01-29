@@ -20,12 +20,17 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Open3D CONFIG REQUIRED)
-
+find_package(message_filters REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 # ------------------------------------------------------------
 # Build external library (vendored)
@@ -44,7 +49,15 @@ add_subdirectory(external/pcd_block_estimation)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SegmentAtPoint.srv"
   "srv/RegisterBlock.srv"
-  DEPENDENCIES sensor_msgs geometry_msgs
+  "msg/Block.msg"
+  "msg/BlockArray.msg"
+  DEPENDENCIES
+  sensor_msgs
+  geometry_msgs
+  geometry_msgs
+  builtin_interfaces
+  std_msgs
+  visualization_msgs
 )
 
 rosidl_get_typesupport_target(
@@ -84,6 +97,42 @@ ament_target_dependencies(block_registration_node
   cv_bridge
 )
 
+# ------------------------------------------------------------
+# World Model node
+# ------------------------------------------------------------
+add_executable(world_model_node
+  src/world_model_node.cpp
+  src/io_utils.cpp
+  src/img_utils.cpp
+)
+
+target_include_directories(world_model_node
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(world_model_node
+  pcd_block_estimation
+  ${cpp_typesupport_target}
+)
+
+
+ament_target_dependencies(world_model_node
+  rclcpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  vision_msgs
+  cv_bridge
+  message_filters
+  visualization_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
+
+
 # Make sure generated service headers are visible
 # rosidl_target_interfaces(block_registration_node
 #   ${PROJECT_NAME} "rosidl_typesupport_cpp")
@@ -93,6 +142,7 @@ ament_target_dependencies(block_registration_node
 # ------------------------------------------------------------
 install(TARGETS
   block_registration_node
+  world_model_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
