@@ -15,9 +15,12 @@
 
 #include <unordered_map>
 #include <string>
+#include <fstream>
+#include <rcpputils/filesystem_helper.hpp>
 
 #include <Eigen/Dense>
 #include <cv_bridge/cv_bridge.h>
+#include <opencv2/imgcodecs.hpp>
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
 
@@ -140,6 +143,31 @@ public:
     K_ = load_camera_matrix(calib_yaml_);
 
     RCLCPP_INFO(get_logger(), "World model node started");
+
+    RCLCPP_DEBUG(
+      get_logger(),
+      "T_P_C_:\n"
+      "[ %.4f %.4f %.4f %.4f ]\n"
+      "[ %.4f %.4f %.4f %.4f ]\n"
+      "[ %.4f %.4f %.4f %.4f ]\n"
+      "[ %.4f %.4f %.4f %.4f ]",
+      T_P_C_(0, 0), T_P_C_(0, 1), T_P_C_(0, 2), T_P_C_(0, 3),
+      T_P_C_(1, 0), T_P_C_(1, 1), T_P_C_(1, 2), T_P_C_(1, 3),
+      T_P_C_(2, 0), T_P_C_(2, 1), T_P_C_(2, 2), T_P_C_(2, 3),
+      T_P_C_(3, 0), T_P_C_(3, 1), T_P_C_(3, 2), T_P_C_(3, 3)
+    );
+
+    RCLCPP_DEBUG(
+      get_logger(),
+      "K:\n"
+      "[ %.2f %.2f %.2f ]\n"
+      "[ %.2f %.2f %.2f ]\n"
+      "[ %.2f %.2f %.2f ]",
+      K_(0, 0), K_(0, 1), K_(0, 2),
+      K_(1, 0), K_(1, 1), K_(1, 2),
+      K_(2, 0), K_(2, 1), K_(2, 2)
+    );
+
   }
 
 private:
@@ -159,6 +187,12 @@ private:
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
     const sensor_msgs::msg::Image::ConstSharedPtr & mask_msg)
   {
+    RCLCPP_DEBUG(
+      this->get_logger(), "callback() with %ld detections",
+      detections->detections.size());
+
+    lidar_frame_ = cloud->header.frame_id;
+    auto time_stamp = cloud->header.stamp;
     auto scene = pointcloud2_to_open3d(*cloud);
 
     cv::Mat full_mask =
@@ -166,12 +200,87 @@ private:
 
     for (const auto & det : detections->detections) {
 
-      // 🔹 Extract per-detection mask
+      // Extract per-detection mask
       cv::Mat det_mask = extract_mask_roi(full_mask, det);
 
       if (det_mask.empty()) {
+        RCLCPP_WARN(this->get_logger(), "detection mask empty");
         continue;
       }
+
+      int count = cv::countNonZero(full_mask);
+      RCLCPP_DEBUG(this->get_logger(), "full mask > 1: %d", count);
+      count = cv::countNonZero(det_mask);
+      RCLCPP_DEBUG(this->get_logger(), "detection mask > 1: %d", count);
+      RCLCPP_DEBUG(this->get_logger(), "scene->points.size(): %ld", scene->points_.size());
+
+
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      // DEBUG DUMP
+      //////////////////////////////////////////////////////////////////////////////////////////////
+
+// ------------------------------------------------------------------
+// DEBUG DUMP (one-shot or per detection)
+// ------------------------------------------------------------------
+      // static bool dumped_once = false;
+      // if (!dumped_once) {
+      //   dumped_once = true;
+
+      //   const std::string dump_dir = "/tmp/world_model_debug";
+      //   rcpputils::fs::create_directories(dump_dir);
+
+      //   const auto stamp =
+      //     std::to_string(cloud->header.stamp.sec) + "_" +
+      //     std::to_string(cloud->header.stamp.nanosec);
+
+      //   // --- Save full mask ---
+      //   {
+      //     std::string path = dump_dir + "/full_mask_" + stamp + ".png";
+      //     cv::imwrite(path, full_mask);
+      //     RCLCPP_DEBUG(get_logger(), "Saved full mask: %s", path.c_str());
+      //   }
+
+      //   // --- Save detection mask ---
+      //   {
+      //     std::string path = dump_dir + "/det_mask_" + stamp + ".png";
+      //     cv::imwrite(path, det_mask);
+      //     RCLCPP_DEBUG(get_logger(), "Saved detection mask: %s", path.c_str());
+      //   }
+
+      //   // --- Save full point cloud ---
+      //   {
+      //     std::string path = dump_dir + "/scene_" + stamp + ".ply";
+      //     open3d::io::WritePointCloud(path, *scene);
+      //     RCLCPP_DEBUG(get_logger(), "Saved pointcloud: %s", path.c_str());
+      //   }
+
+      //   // --- Save intrinsics K ---
+      //   {
+      //     std::string path = dump_dir + "/K_" + stamp + ".txt";
+      //     std::ofstream f(path);
+      //     f << K_ << std::endl;
+      //     RCLCPP_DEBUG(get_logger(), "Saved K: %s", path.c_str());
+      //   }
+
+      //   // --- Save extrinsics T_P_C ---
+      //   {
+      //     std::string path = dump_dir + "/T_P_C_" + stamp + ".txt";
+      //     std::ofstream f(path);
+      //     f << T_P_C_ << std::endl;
+      //     RCLCPP_DEBUG(get_logger(), "Saved T_P_C: %s", path.c_str());
+      //   }
+
+      //   RCLCPP_WARN(
+      //     get_logger(),
+      //     "World-model debug dump written to %s",
+      //     dump_dir.c_str()
+      //   );
+      // }
+
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      // DEBUG DUMP END
+      //////////////////////////////////////////////////////////////////////////////////////////////
+
 
       auto pts = select_points_by_mask(
         scene->points_,
@@ -181,16 +290,26 @@ private:
       );
 
       if (static_cast<int>(pts.size()) < min_points_) {
+        RCLCPP_WARN(
+          this->get_logger(), "points in pointcloud (%ld) less than min_points (%d)",
+          pts.size(), min_points_);
         continue;
       }
 
       Eigen::Vector3d c = compute_center(pts);
 
-      geometry_msgs::msg::Pose pose;
-      pose.position.x = c.x();
-      pose.position.y = c.y();
-      pose.position.z = c.z();
-      pose.orientation.w = 1.0;
+      geometry_msgs::msg::Pose pose_lidar_frame;
+      pose_lidar_frame.position.x = c.x();
+      pose_lidar_frame.position.y = c.y();
+      pose_lidar_frame.position.z = c.z();
+      pose_lidar_frame.orientation.w = 1.0;
+
+      auto pose_stamped = transform_pose_to_world(pose_lidar_frame, lidar_frame_, time_stamp);
+      auto pose = pose_stamped.pose;
+
+      RCLCPP_DEBUG(
+        this->get_logger(), "Associate block at x: %3.2f, y: %3.2f, z: %3.2f", pose.position.x,
+        pose.position.y, pose.position.z);
 
       const std::string id = associate_or_create(pose);
 
@@ -204,6 +323,7 @@ private:
     }
 
     publish();
+    publish_markers();
   }
 
   geometry_msgs::msg::PoseStamped
@@ -236,13 +356,30 @@ private:
   {
     for (auto & [id, state] : blocks_) {
       if (distance(state.msg.pose, pose) < assoc_dist_) {
+        RCLCPP_DEBUG(this->get_logger(), "Found block with '%s'", id.c_str());
         return id;
       }
     }
 
+
     // New block
     std::string id = "block_" + std::to_string(next_id_++);
     BlockState state;
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Create new block '%s' at pose [x=%.3f y=%.3f z=%.3f | "
+      "qx=%.3f qy=%.3f qz=%.3f qw=%.3f]",
+      id.c_str(),
+      pose.position.x,
+      pose.position.y,
+      pose.position.z,
+      pose.orientation.x,
+      pose.orientation.y,
+      pose.orientation.z,
+      pose.orientation.w
+    );
+
     state.msg.id = id;
     blocks_[id] = state;
     return id;
@@ -406,6 +543,7 @@ private:
 
   std::string calib_yaml_;
   std::string world_frame_;
+  std::string lidar_frame_;
   double assoc_dist_;
   int min_points_;
 

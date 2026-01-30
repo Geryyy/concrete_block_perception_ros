@@ -126,5 +126,19 @@ def generate_launch_description():
                     "camera_info_topic": "/zed2i/warped/left/camera_info",
                 }.items(),
             ),
+            # Node(
+            #     package="concrete_block_perception",
+            #     executable="world_model_node",
+            #     name="block_world_model_node",
+            #     output="screen",
+            #     parameters=[
+            #         {
+            #             # "calib_yaml": "",  # optional override
+            #             "world_frame": "world",
+            #             "assoc_dist": 0.15,
+            #             "min_points": 30,
+            #         }
+            #     ],
+            # ),
         ]
     )

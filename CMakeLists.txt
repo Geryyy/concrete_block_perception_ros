@@ -31,6 +31,7 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # ------------------------------------------------------------
 # Build external library (vendored)
@@ -115,6 +116,7 @@ target_include_directories(world_model_node
 target_link_libraries(world_model_node
   pcd_block_estimation
   ${cpp_typesupport_target}
+  ${OpenCV_LIBS}
 )
 
 
