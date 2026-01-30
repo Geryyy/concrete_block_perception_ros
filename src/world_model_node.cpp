@@ -355,6 +355,11 @@ private:
     const geometry_msgs::msg::Pose & pose)
   {
     for (auto & [id, state] : blocks_) {
+      // if (state.msg.task_status == state.msg.TASK_MOVE) {
+      //   // do not update block if
+      //   continue;
+      // }
+
       if (distance(state.msg.pose, pose) < assoc_dist_) {
         RCLCPP_DEBUG(this->get_logger(), "Found block with '%s'", id.c_str());
         return id;
