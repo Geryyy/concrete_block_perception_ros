@@ -1,39 +1,50 @@
-import os
-import subprocess
-from launch.actions import IncludeLaunchDescription
+from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from ament_index_python import get_package_share_directory
-from launch.substitutions import LaunchConfiguration, PathSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.substitutions import PathJoinSubstitution
-
-from launch import LaunchDescription
 
 
 def generate_launch_description():
-    pkg_dir = FindPackageShare("concrete_block_perception")
+    calib_yaml = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "calib_zed2i_to_seyond.yaml",
+        ]
+    )
+
+    params_file = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "world_model.yaml",
+        ]
+    )
 
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="true",
+            ),
             Node(
                 package="concrete_block_perception",
                 executable="world_model_node",
                 name="block_world_model_node",
-                output="screen",
                 parameters=[
+                    params_file,
                     {
-                        # "calib_yaml": "",  # optional override
-                        "world_frame": "world",
-                        "assoc_dist": 0.6,
-                        "min_points": 30,
-                    }
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "calib_yaml": calib_yaml,
+                    },
                 ],
                 remappings=[
                     ("detections", "/yolos_segmentor/detections"),
                     ("points", "/seyond_points"),
                     ("image", "/yolos_segmentor/mask"),
                 ],
+                output="screen",
             ),
         ]
     )

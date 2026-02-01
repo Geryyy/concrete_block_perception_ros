@@ -105,6 +105,12 @@ add_executable(world_model_node
   src/world_model_node.cpp
   src/io_utils.cpp
   src/img_utils.cpp
+  src/block_utils.cpp
+  src/visu_utils.cpp
+  src/tracking/damped_cv_kalman_filter.cpp
+  src/tracking/gating.cpp
+  src/tracking/hungarian.cpp
+  src/tracking/multi_object_tracker.cpp
 )
 
 target_include_directories(world_model_node
