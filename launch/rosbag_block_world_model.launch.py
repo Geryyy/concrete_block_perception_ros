@@ -115,7 +115,7 @@ def generate_launch_description():
             declare_world_model_params,
             perception_launch,
             rosbag_nodes_launch,
-            world_node_launch,
+            # world_node_launch,
             rosbag_play,
         ]
     )

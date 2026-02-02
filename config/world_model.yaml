@@ -6,25 +6,28 @@ block_world_model_node:
       min_points: 30
 
     tracker:
-      min_hits: 3
+      min_hits: 5
       max_misses: 10
       chi2_gate: 7.815   # 95% for 3D
+      deduplication_radius: 0.5
+      iou_thresh: 0.3
+      birth_suppression_radius: 0.5
 
-      velocity_damping: 0.9
+      velocity_damping: 0.3
 
       process_noise:
-        px: 1.0e-4
-        py: 1.0e-4
-        pz: 1.0e-4
-        yaw: 1.0e-4
-        vx: 5.0e-2
-        vy: 5.0e-2
-        vz: 5.0e-2
+        px: 1.0e-6
+        py: 1.0e-6
+        pz: 1.0e-6
+        yaw: 1.0e-6
+        vx: 5.0e-3
+        vy: 5.0e-3
+        vz: 5.0e-3
 
       measurement_noise:
-        px: 0.05
-        py: 0.05
-        pz: 0.07
+        px: 0.02
+        py: 0.02
+        pz: 0.02
         yaw: 0.15
 
     icp:

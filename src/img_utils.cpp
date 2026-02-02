@@ -31,3 +31,23 @@ cv::Mat extract_mask_roi(
 
   return det_mask;
 }
+
+
+double bboxIoU(const cv::Rect & a, const cv::Rect & b)
+{
+  const int x1 = std::max(a.x, b.x);
+  const int y1 = std::max(a.y, b.y);
+  const int x2 = std::min(a.x + a.width,  b.x + b.width);
+  const int y2 = std::min(a.y + a.height, b.y + b.height);
+
+  const int inter_area =
+    std::max(0, x2 - x1) * std::max(0, y2 - y1);
+
+  const int union_area =
+    a.area() + b.area() - inter_area;
+
+  if (union_area <= 0)
+    return 0.0;
+
+  return static_cast<double>(inter_area) / union_area;
+}

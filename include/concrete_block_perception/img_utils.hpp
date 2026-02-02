@@ -9,3 +9,6 @@
 cv::Mat extract_mask_roi(
   const cv::Mat & full_mask,
   const vision_msgs::msg::Detection2D & det);
+
+
+double bboxIoU(const cv::Rect & a, const cv::Rect & b);

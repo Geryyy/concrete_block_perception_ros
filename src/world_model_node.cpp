@@ -46,56 +46,121 @@ public:
     // Parameters
     // ----------------------------
     declare_parameter<std::string>("calib_yaml", "");
-    declare_parameter<std::string>("world_frame", "world");
+// ----------------------------
+// World model
+// ----------------------------
+    declare_parameter<std::string>("world_model.world_frame", "world");
     declare_parameter<int>("world_model.min_points", 30);
 
-    declare_parameter<int>("tracker.min_hits", 3);
+// ----------------------------
+// Tracker – lifecycle / gating
+// ----------------------------
+    declare_parameter<int>("tracker.min_hits", 5);
     declare_parameter<int>("tracker.max_misses", 10);
     declare_parameter<double>("tracker.chi2_gate", 7.815);
 
-    declare_parameter<double>("tracker.process_noise.pos", 1e-4);
-    declare_parameter<double>("tracker.process_noise.yaw", 1e-3);
-    declare_parameter<double>("tracker.process_noise.vel", 5e-2);
+    declare_parameter<double>("tracker.deduplication_radius", 0.5);
+    declare_parameter<double>("tracker.iou_thresh", 0.3);
+    declare_parameter<double>("tracker.birth_suppression_radius", 0.5);
 
-    declare_parameter<double>("tracker.measurement_noise.x", 0.05);
-    declare_parameter<double>("tracker.measurement_noise.y", 0.05);
-    declare_parameter<double>("tracker.measurement_noise.z", 0.07);
+// ----------------------------
+// Tracker – motion model
+// ----------------------------
+    declare_parameter<double>("tracker.velocity_damping", 0.0);
+
+// ----------------------------
+// Tracker – process noise
+// ----------------------------
+    declare_parameter<double>("tracker.process_noise.px", 1e-6);
+    declare_parameter<double>("tracker.process_noise.py", 1e-6);
+    declare_parameter<double>("tracker.process_noise.pz", 1e-6);
+    declare_parameter<double>("tracker.process_noise.yaw", 1e-6);
+    declare_parameter<double>("tracker.process_noise.vx", 5e-4);
+    declare_parameter<double>("tracker.process_noise.vy", 5e-4);
+    declare_parameter<double>("tracker.process_noise.vz", 5e-4);
+
+// ----------------------------
+// Tracker – measurement noise
+// ----------------------------
+    declare_parameter<double>("tracker.measurement_noise.px", 0.1);
+    declare_parameter<double>("tracker.measurement_noise.py", 0.1);
+    declare_parameter<double>("tracker.measurement_noise.pz", 0.1);
     declare_parameter<double>("tracker.measurement_noise.yaw", 0.15);
 
     // ----------------------------
     // Read parameters
     // ----------------------------
     calib_yaml_ = get_parameter("calib_yaml").as_string();
-    world_frame_ = get_parameter("world_frame").as_string();
-    min_points_ = get_parameter("world_model.min_points").as_int();
+    // ----------------------------
+// Read world model params
+// ----------------------------
+    world_frame_ =
+      get_parameter("world_model.world_frame").as_string();
 
-    tracker_cfg_.min_hits = get_parameter("tracker.min_hits").as_int();
-    tracker_cfg_.max_misses = get_parameter("tracker.max_misses").as_int();
-    tracker_cfg_.chi2_gate = get_parameter("tracker.chi2_gate").as_double();
+    min_points_ =
+      get_parameter("world_model.min_points").as_int();
 
     // ----------------------------
-    // Tracker noise matrices
-    // State: [x y z yaw vx vy vz]
+    // Read tracker lifecycle params
     // ----------------------------
-    tracker_cfg_.Q = Eigen::MatrixXd::Zero(7, 7);
+    tracker_cfg_.min_hits =
+      get_parameter("tracker.min_hits").as_int();
+
+    tracker_cfg_.max_misses =
+      get_parameter("tracker.max_misses").as_int();
+
+    tracker_cfg_.chi2_gate =
+      get_parameter("tracker.chi2_gate").as_double();
+
+    tracker_cfg_.deduplication_radius =
+      get_parameter("tracker.deduplication_radius").as_double();
+
+    tracker_cfg_.iou_thresh =
+      get_parameter("tracker.iou_thresh").as_double();
+
+    tracker_cfg_.birth_suppression_radius =
+      get_parameter("tracker.birth_suppression_radius").as_double();
+
+    // ----------------------------
+    // Read tracker motion model
+    // ----------------------------
+    tracker_cfg_.velocity_damping =
+      get_parameter("tracker.velocity_damping").as_double();
+
+    tracker_cfg_.Q.setZero();
+
     tracker_cfg_.Q.diagonal() <<
-      get_parameter("tracker.process_noise.pos").as_double(),
-      get_parameter("tracker.process_noise.pos").as_double(),
-      get_parameter("tracker.process_noise.pos").as_double(),
+      get_parameter("tracker.process_noise.px").as_double(),
+      get_parameter("tracker.process_noise.py").as_double(),
+      get_parameter("tracker.process_noise.pz").as_double(),
       get_parameter("tracker.process_noise.yaw").as_double(),
-      get_parameter("tracker.process_noise.vel").as_double(),
-      get_parameter("tracker.process_noise.vel").as_double(),
-      get_parameter("tracker.process_noise.vel").as_double();
+      get_parameter("tracker.process_noise.vx").as_double(),
+      get_parameter("tracker.process_noise.vy").as_double(),
+      get_parameter("tracker.process_noise.vz").as_double();
 
-    tracker_cfg_.R = Eigen::MatrixXd::Zero(4, 4);
+
+    tracker_cfg_.R.setZero();
+
     tracker_cfg_.R.diagonal() <<
-      std::pow(get_parameter("tracker.measurement_noise.x").as_double(), 2),
-      std::pow(get_parameter("tracker.measurement_noise.y").as_double(), 2),
-      std::pow(get_parameter("tracker.measurement_noise.z").as_double(), 2),
+      std::pow(get_parameter("tracker.measurement_noise.px").as_double(), 2),
+      std::pow(get_parameter("tracker.measurement_noise.py").as_double(), 2),
+      std::pow(get_parameter("tracker.measurement_noise.pz").as_double(), 2),
       std::pow(get_parameter("tracker.measurement_noise.yaw").as_double(), 2);
 
+
     tracker_ =
-      std::make_unique<cbp::tracking::MultiObjectTracker>(tracker_cfg_);
+      std::make_unique<cbp::tracking::MultiObjectTracker>(tracker_cfg_, this->get_logger());
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Tracker: min_hits=%d max_misses=%d chi2=%.2f dedup=%.2f iou=%.2f birth=%.2f vel_damp=%.2f",
+      tracker_cfg_.min_hits,
+      tracker_cfg_.max_misses,
+      tracker_cfg_.chi2_gate,
+      tracker_cfg_.deduplication_radius,
+      tracker_cfg_.iou_thresh,
+      tracker_cfg_.birth_suppression_radius,
+      tracker_cfg_.velocity_damping);
 
     // ----------------------------
     // Publishers
@@ -154,8 +219,11 @@ private:
 
     const auto stamp = cloud->header.stamp;
     const auto scene = pointcloud2_to_open3d(*cloud);
-    const auto full_mask =
+    const cv::Mat full_mask =
       cv_bridge::toCvCopy(mask_msg, "mono8")->image;
+
+    const int img_w = full_mask.cols;
+    const int img_h = full_mask.rows;
 
     for (const auto & det : detections->detections) {
 
@@ -167,7 +235,7 @@ private:
       const auto pts = select_points_by_mask(
         scene->points_, det_mask, K_, T_P_C_);
 
-      if ((int)pts.size() < min_points_) {
+      if (static_cast<int>(pts.size()) < min_points_) {
         continue;
       }
 
@@ -199,7 +267,40 @@ private:
         det.results.empty() ? 0.0 : det.results[0].hypothesis.score;
       m.stamp = stamp;
 
-      measurements.push_back(m);
+      // --------------------------------------------------
+      // Bounding box (image space, CLAMPED)
+      // --------------------------------------------------
+      const auto & bb = det.bbox;
+
+      int x = static_cast<int>(bb.center.position.x - 0.5 * bb.size_x);
+      int y = static_cast<int>(bb.center.position.y - 0.5 * bb.size_y);
+      int w = static_cast<int>(bb.size_x);
+      int h = static_cast<int>(bb.size_y);
+
+      // Clamp to image bounds
+      x = std::clamp(x, 0, img_w - 1);
+      y = std::clamp(y, 0, img_h - 1);
+      w = std::min(w, img_w - x);
+      h = std::min(h, img_h - y);
+
+      // Skip degenerate boxes
+      if (w <= 0 || h <= 0) {
+        continue;
+      }
+
+      m.bbox = cv::Rect(x, y, w, h);
+
+      // --------------------------------------------------
+      // Mask (full image, CLONED for safety)
+      // --------------------------------------------------
+      m.mask = det_mask.clone();
+
+      // --------------------------------------------------
+      // Debug output (safe)
+      // --------------------------------------------------
+      RCLCPP_DEBUG_STREAM(get_logger(), m.to_string());
+
+      measurements.push_back(std::move(m));
     }
 
     tracker_->step(measurements, stamp);
@@ -207,6 +308,7 @@ private:
     publish();
     publish_markers();
   }
+
 
   geometry_msgs::msg::PoseStamped
   transform_pose_to_world(
@@ -246,6 +348,12 @@ private:
       b.pose.position.z = track.kf.x()(2);
       b.pose.orientation.w = 1.0;
 
+      b.confidence = track.confidence;
+      b.last_seen = track.last_update;
+
+      b.pose_status = track.pose_status;
+      b.task_status = track.task_status;
+
       msg.blocks.push_back(b);
     }
 
@@ -255,7 +363,6 @@ private:
   void publish_markers()
   {
     visualization_msgs::msg::MarkerArray arr;
-    int id = 0;
 
     for (const auto & track : tracker_->tracks()) {
 
@@ -264,17 +371,24 @@ private:
       }
 
       Block b;
+      b.id = "block_" + std::to_string(track.id);
+
       b.pose.position.x = track.kf.x()(0);
       b.pose.position.y = track.kf.x()(1);
       b.pose.position.z = track.kf.x()(2);
       b.pose.orientation.w = 1.0;
+
+      b.confidence = track.confidence;
+      int id = track.id;
+      b.id = "block_" + std::to_string(track.id);
+      b.pose_status = track.pose_status;
+      b.task_status = track.task_status;
 
       arr.markers.push_back(
         make_block_marker(b, world_frame_, id, now()));
       arr.markers.push_back(
         make_text_marker(b, world_frame_, id, now()));
 
-      ++id;
     }
 
     marker_pub_->publish(arr);

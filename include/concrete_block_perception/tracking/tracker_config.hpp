@@ -30,6 +30,10 @@ struct TrackerConfig
   // Measurement: [px py pz yaw] (4)
   Eigen::Matrix<double, 4, 4> R =
     Eigen::Matrix<double, 4, 4>::Zero();
+
+  double deduplication_radius{0.1};
+  double iou_thresh{0.3};
+  double birth_suppression_radius{0.1};
 };
 
 }  // namespace cbp::tracking
