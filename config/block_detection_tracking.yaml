@@ -1,0 +1,23 @@
+block_detection_tracking_node:
+  ros__parameters:
+
+    # -------------------------
+    # Detection filtering
+    # -------------------------
+    min_confidence: 0.4
+    min_bbox_area: 500.0
+
+    # -------------------------
+    # Tracking & association
+    # -------------------------
+    iou_threshold: 0.3
+    containment_ratio: 0.9
+    suppression_radius: 0.9
+    confirm_age: 5
+    max_misses: 5
+
+    # -------------------------
+    # Debugging
+    # -------------------------
+    publish_debug_image: true
+    debug_topic: "debug/tracked_detections_image"

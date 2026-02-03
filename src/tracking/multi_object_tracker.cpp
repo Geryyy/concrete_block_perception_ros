@@ -271,6 +271,7 @@ void MultiObjectTracker::createTrack(
   t.confirmed = false;
   t.last_update = stamp;
   t.pose_status = Block::POSE_COARSE;
+  t.task_status = Block::TASK_FREE;
 
   Eigen::Vector4d z;
   z << meas.position, meas.yaw;

@@ -29,6 +29,9 @@ struct Track
   int pose_status{Block::POSE_UNKNOWN};
   int task_status{Block::TASK_UNKNOWN};
   float confidence{0.0f};
+
+  bool icp_pending{false};
+  rclcpp::Time last_icp_request;
 };
 
 }  // namespace cbp::tracking

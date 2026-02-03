@@ -52,6 +52,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RegisterBlock.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
+  "msg/TrackedDetection.msg"
+  "msg/TrackedDetectionArray.msg"
   DEPENDENCIES
   sensor_msgs
   geometry_msgs
@@ -59,6 +61,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   builtin_interfaces
   std_msgs
   visualization_msgs
+  vision_msgs
 )
 
 rosidl_get_typesupport_target(
@@ -69,6 +72,38 @@ rosidl_get_typesupport_target(
 
 
 ament_export_dependencies(rosidl_default_runtime)
+
+# ------------------------------------------------------------
+# Block detection tracking node
+# ------------------------------------------------------------
+add_executable(block_detection_tracking_node
+  src/block_detection_tracking_node.cpp
+  src/io_utils.cpp
+  src/img_utils.cpp
+  src/block_utils.cpp
+  src/visu_utils.cpp
+  src/detection_association.cpp
+)
+
+target_include_directories(block_detection_tracking_node
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(block_detection_tracking_node
+  pcd_block_estimation
+  ${cpp_typesupport_target}
+)
+
+
+ament_target_dependencies(block_detection_tracking_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  vision_msgs
+  cv_bridge
+)
 
 # ------------------------------------------------------------
 # Block registration node
@@ -149,6 +184,7 @@ ament_target_dependencies(world_model_node
 # Install targets
 # ------------------------------------------------------------
 install(TARGETS
+  block_detection_tracking_node
   block_registration_node
   world_model_node
   DESTINATION lib/${PROJECT_NAME}

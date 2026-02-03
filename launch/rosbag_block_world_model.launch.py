@@ -19,6 +19,9 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     bag_path = LaunchConfiguration("bag")
     world_model_params = LaunchConfiguration("world_model_params")
+    block_detection_tracking_params = LaunchConfiguration(
+        "block_detection_tracking_params"
+    )
 
     # -----------------------
     # Launch arguments
@@ -36,11 +39,11 @@ def generate_launch_description():
     )
 
     declare_world_model_params = DeclareLaunchArgument(
-        "world_model_params",
+        "block_detection_tracking_params",
         default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
         / "config"
-        / "world_model.yaml",
-        description="YAML parameter file for block world model",
+        / "block_detection_tracking.yaml",
+        description="YAML parameter file for block detection tracking node",
     )
 
     # -----------------------
@@ -60,31 +63,46 @@ def generate_launch_description():
     # -----------------------
     # Rosbag replay helper nodes
     # -----------------------
-    rosbag_nodes_launch = IncludeLaunchDescription(
+    # rosbag_nodes_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathSubstitution(FindPackageShare("epsilon_crane_bringup_hmi"))
+    #         / "launch"
+    #         / "rosbag_replay_nodes.launch.py"
+    #     ),
+    #     launch_arguments={
+    #         "use_sim_time": use_sim_time,
+    #     }.items(),
+    # )
+
+    # -----------------------
+    # block detection tracking node (WITH YAML)
+    # -----------------------
+    block_detection_tracker = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("epsilon_crane_bringup_hmi"))
+            PathSubstitution(FindPackageShare("concrete_block_perception"))
             / "launch"
-            / "rosbag_replay_nodes.launch.py"
+            / "detection_tracking.launch.py"
         ),
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "params_file": block_detection_tracking_params,
         }.items(),
     )
 
     # -----------------------
     # World model (WITH YAML)
     # -----------------------
-    world_node_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_perception"))
-            / "launch"
-            / "world_node.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "params_file": world_model_params,
-        }.items(),
-    )
+    # world_node_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathSubstitution(FindPackageShare("concrete_block_perception"))
+    #         / "launch"
+    #         / "world_node.launch.py"
+    #     ),
+    #     launch_arguments={
+    #         "use_sim_time": use_sim_time,
+    #         "params_file": world_model_params,
+    #     }.items(),
+    # )
 
     # -----------------------
     # Rosbag play (delayed!)
@@ -114,7 +132,8 @@ def generate_launch_description():
             declare_bag_path,
             declare_world_model_params,
             perception_launch,
-            rosbag_nodes_launch,
+            # rosbag_nodes_launch,
+            # block_detection_tracker,
             # world_node_launch,
             rosbag_play,
         ]

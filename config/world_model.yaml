@@ -34,4 +34,4 @@ block_world_model_node:
       enable: false
       min_hits: 5
       max_covariance: 0.02
-      service_name: /block_registration/refine
+      service_name: /register_block_pose

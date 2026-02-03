@@ -32,12 +32,25 @@ cv::Mat extract_mask_roi(
   return det_mask;
 }
 
+double bboxCenterDistance(
+  const vision_msgs::msg::Detection2D & a,
+  const vision_msgs::msg::Detection2D & b)
+{
+  const auto & ca = a.bbox.center.position;
+  const auto & cb = b.bbox.center.position;
+
+  const double dx = ca.x - cb.x;
+  const double dy = ca.y - cb.y;
+
+  return std::sqrt(dx * dx + dy * dy);
+}
+
 
 double bboxIoU(const cv::Rect & a, const cv::Rect & b)
 {
   const int x1 = std::max(a.x, b.x);
   const int y1 = std::max(a.y, b.y);
-  const int x2 = std::min(a.x + a.width,  b.x + b.width);
+  const int x2 = std::min(a.x + a.width, b.x + b.width);
   const int y2 = std::min(a.y + a.height, b.y + b.height);
 
   const int inter_area =
@@ -46,8 +59,40 @@ double bboxIoU(const cv::Rect & a, const cv::Rect & b)
   const int union_area =
     a.area() + b.area() - inter_area;
 
-  if (union_area <= 0)
+  if (union_area <= 0) {
     return 0.0;
+  }
 
   return static_cast<double>(inter_area) / union_area;
+}
+
+
+double maskIoU(const cv::Mat & a, const cv::Mat & b)
+{
+  CV_Assert(a.size() == b.size());
+  CV_Assert(a.type() == b.type());
+
+  cv::Mat inter, uni;
+
+  cv::bitwise_and(a, b, inter);
+  cv::bitwise_or(a, b, uni);
+
+  const double inter_area = static_cast<double>(cv::countNonZero(inter));
+  const double union_area = static_cast<double>(cv::countNonZero(uni));
+
+  if (union_area <= 0.0) {
+    return 0.0;
+  }
+
+  return inter_area / union_area;
+}
+
+cv::Rect toCvRect(const vision_msgs::msg::Detection2D & det)
+{
+  const int cx = static_cast<int>(std::round(det.bbox.center.position.x));
+  const int cy = static_cast<int>(std::round(det.bbox.center.position.y));
+  const int w = static_cast<int>(std::round(det.bbox.size_x));
+  const int h = static_cast<int>(std::round(det.bbox.size_y));
+
+  return cv::Rect(cx - w / 2, cy - h / 2, w, h);
 }
