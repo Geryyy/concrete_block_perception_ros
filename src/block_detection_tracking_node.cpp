@@ -16,7 +16,7 @@
 // Logging macro
 // ================================
 // Change RCLCPP_DEBUG -> RCLCPP_INFO to globally raise verbosity
-#define TRACK_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
+#define TRACK_LOG(logger, ...) RCLCPP_DEBUG(logger, __VA_ARGS__)
 
 
 using vision_msgs::msg::Detection2DArray;
@@ -255,16 +255,21 @@ private:
 
       // ---- update track
       track.detection = msg->detections[det_idx];
+      track.detection.header.stamp = now;
 
       if (!full_mask.empty()) {
         cv::Mat det_mask =
           extract_mask_roi(full_mask, track.detection);
 
-        track.mask =
-          *cv_bridge::CvImage(
-          last_mask_->header,
+        auto mask_msg =
+          cv_bridge::CvImage(
+          std_msgs::msg::Header(), // empty header
           "mono8",
           det_mask).toImageMsg();
+
+        mask_msg->header.stamp = now;
+        mask_msg->header.frame_id = track.detection.header.frame_id;
+        track.mask = *mask_msg;
       } else {
         track.mask = sensor_msgs::msg::Image{};
       }
@@ -359,11 +364,16 @@ private:
         cv::Mat det_mask =
           extract_mask_roi(full_mask, det);
 
-        track.mask =
-          *cv_bridge::CvImage(
-          last_mask_->header,
+        auto mask_msg =
+          cv_bridge::CvImage(
+          std_msgs::msg::Header(), // empty header
           "mono8",
           det_mask).toImageMsg();
+
+        mask_msg->header.stamp = now;
+        mask_msg->header.frame_id = track.detection.header.frame_id;
+
+        track.mask = *mask_msg;
       }
 
       track.age = 1;
@@ -416,8 +426,13 @@ private:
       }
       TrackedDetection td;
       td.detection_id = track.detection_id;
+
       td.detection = track.detection;
+      td.detection.header.stamp = now;
+
       td.mask = track.mask;
+      td.mask.header.stamp = now;
+
       td.age = track.age;
       td.misses = track.misses;
       td.stamp = now;

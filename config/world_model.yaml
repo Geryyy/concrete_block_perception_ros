@@ -1,37 +1,24 @@
 block_world_model_node:
   ros__parameters:
 
-    world_model:
-      world_frame: world
-      min_points: 30
+    # ----------------------------------
+    # World model (minimal)
+    # ----------------------------------
+    min_points: 50
 
-    tracker:
-      min_hits: 5
-      max_misses: 10
-      chi2_gate: 7.815   # 95% for 3D
-      deduplication_radius: 0.5
-      iou_thresh: 0.3
-      birth_suppression_radius: 0.5
+    # ----------------------------------
+    # Registration gating
+    # ----------------------------------
+    min_fitness: 0.3
+    max_rmse: 0.05
 
-      velocity_damping: 0.3
+    # ----------------------------------
+    # Object / template selection
+    # ----------------------------------
+    object_class: "concrete_block"
 
-      process_noise:
-        px: 1.0e-6
-        py: 1.0e-6
-        pz: 1.0e-6
-        yaw: 1.0e-6
-        vx: 5.0e-3
-        vy: 5.0e-3
-        vz: 5.0e-3
-
-      measurement_noise:
-        px: 0.02
-        py: 0.02
-        pz: 0.02
-        yaw: 0.15
-
-    icp:
-      enable: false
-      min_hits: 5
-      max_covariance: 0.02
-      service_name: /register_block_pose
+    # ----------------------------------
+    # Registration service
+    # ----------------------------------
+    registration:
+      service_name: "/register_block_pose"

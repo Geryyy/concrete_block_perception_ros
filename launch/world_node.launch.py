@@ -40,9 +40,10 @@ def generate_launch_description():
                     },
                 ],
                 remappings=[
-                    ("detections", "/yolos_segmentor/detections"),
+                    ("tracked_detections", "/cbp/tracked_detections"),
                     ("points", "/seyond_points"),
-                    ("image", "/yolos_segmentor/mask"),
+                    ("block_world_model", "/cbp/block_world_model"),
+                    ("block_world_model_markers", "/cbp/block_world_model_markers"),
                 ],
                 output="screen",
             ),

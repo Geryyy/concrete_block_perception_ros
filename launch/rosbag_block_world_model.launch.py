@@ -63,16 +63,16 @@ def generate_launch_description():
     # -----------------------
     # Rosbag replay helper nodes
     # -----------------------
-    # rosbag_nodes_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         PathSubstitution(FindPackageShare("epsilon_crane_bringup_hmi"))
-    #         / "launch"
-    #         / "rosbag_replay_nodes.launch.py"
-    #     ),
-    #     launch_arguments={
-    #         "use_sim_time": use_sim_time,
-    #     }.items(),
-    # )
+    rosbag_nodes_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathSubstitution(FindPackageShare("epsilon_crane_bringup_hmi"))
+            / "launch"
+            / "rosbag_replay_nodes.launch.py"
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+        }.items(),
+    )
 
     # -----------------------
     # block detection tracking node (WITH YAML)
@@ -132,8 +132,8 @@ def generate_launch_description():
             declare_bag_path,
             declare_world_model_params,
             perception_launch,
-            # rosbag_nodes_launch,
-            # block_detection_tracker,
+            rosbag_nodes_launch,
+            block_detection_tracker,
             # world_node_launch,
             rosbag_play,
         ]

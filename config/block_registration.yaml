@@ -1,0 +1,38 @@
+block_registration_node:
+  ros__parameters:
+
+    # ------------------------------------------------------------
+    # Calibration & templates
+    # ------------------------------------------------------------
+    # Leave empty to use the default resolved via ament_index
+    # (concrete_block_perception/config/calib_zed2i_to_seyond.yaml)
+    # calib_yaml: ""
+
+    # Leave empty to use default
+    # (concrete_block_perception/config/templates)
+    # template_dir: ""
+
+    # ------------------------------------------------------------
+    # Global registration (plane extraction)
+    # ------------------------------------------------------------
+    # Distance threshold for plane inliers [m]
+    dist_thresh: 0.02
+
+    # Minimum number of inliers per plane
+    min_inliers: 100
+
+    # Maximum angle (deg) between plane normal and world Z
+    angle_thresh_degree: 30.0
+
+    # ------------------------------------------------------------
+    # Local registration (ICP)
+    # ------------------------------------------------------------
+    # Max correspondence distance for ICP [m]
+    icp_dist: 0.04
+
+    # Template yaw sampling step [deg]
+    yaw_step: 30
+
+    debug:
+      publish_cutout: true
+      publish_mask: true
