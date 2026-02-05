@@ -26,6 +26,7 @@
 
 #include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_perception/io_utils.hpp"
+#include "concrete_block_perception/debug_utils.hpp"
 
 using RegisterBlock = concrete_block_perception::srv::RegisterBlock;
 using namespace pcd_block;
@@ -57,20 +58,12 @@ public:
     // ------------------------------------------------------------
     declare_parameter<std::string>("calib_yaml", "");
     declare_parameter<std::string>("template_dir", "");
+    declare_parameter<std::string>("world_frame", "world");
     declare_parameter<double>("dist_thresh", 0.02);
     declare_parameter<int>("min_inliers", 100);
     declare_parameter<double>("icp_dist", 0.04);
     declare_parameter<double>("angle_thresh_degree", 30.0);
     declare_parameter<int>("yaw_step", 30);
-
-    world_frame_ =
-      declare_parameter<std::string>("world_frame", "world");
-
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    tf_listener_ =
-      std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-    tf_broadcaster_ =
-      std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
     calib_yaml = get_parameter("calib_yaml").as_string();
     template_dir = get_parameter("template_dir").as_string();
@@ -82,6 +75,7 @@ public:
       template_dir = default_template_dir;
     }
 
+    world_frame_ = get_parameter("world_frame").as_string();
     dist_thresh = get_parameter("dist_thresh").as_double();
     min_inliers = get_parameter("min_inliers").as_int();
     icp_dist = get_parameter("icp_dist").as_double();
@@ -116,6 +110,12 @@ public:
     // ------------------------------------------------------------
     // Service (SERIALIZED!)
     // ------------------------------------------------------------
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ =
+      std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_broadcaster_ =
+      std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
     service_cb_group_ =
       create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -197,43 +197,47 @@ private:
     const std::shared_ptr<RegisterBlock::Request> req,
     std::shared_ptr<RegisterBlock::Response> res)
   {
-    const auto t0 = this->now();
-    const auto tid =
-      std::hash<std::thread::id>{}(std::this_thread::get_id());
-
-    LOG(
-      get_logger(),
-      "handle_request() start [tid=%lu]", tid);
-
-    // ------------------------------------------------------------
-    // get tf transformation: lidar -> world
-    // ------------------------------------------------------------
-
-    const std::string cloud_frame = req->cloud.header.frame_id;
-    const rclcpp::Time cloud_time(req->cloud.header.stamp);
-
-    geometry_msgs::msg::TransformStamped tf_cloud_to_world;
-
     try {
-      tf_cloud_to_world =
-        tf_buffer_->lookupTransform(
-        world_frame_,   // target
-        cloud_frame,    // source
-        cloud_time,
-        rclcpp::Duration::from_seconds(0.1));
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
+
+      TicToc tt;
+
+      const auto tid =
+        std::hash<std::thread::id>{}(std::this_thread::get_id());
+
+      LOG(
         get_logger(),
-        "TF lookup failed (%s -> %s): %s",
-        cloud_frame.c_str(),
-        world_frame_.c_str(),
-        ex.what());
-      res->success = false;
-      return;
-    }
+        "handle_request() start [tid=%lu]", tid);
+
+      // ------------------------------------------------------------
+      // get tf transformation: lidar -> world
+      // ------------------------------------------------------------
+
+      const std::string cloud_frame = req->cloud.header.frame_id;
+      const rclcpp::Time cloud_time(req->cloud.header.stamp);
+
+      geometry_msgs::msg::TransformStamped tf_cloud_to_world;
+
+      try {
+        tf_cloud_to_world =
+          tf_buffer_->lookupTransform(
+          world_frame_, // target
+          cloud_frame,  // source
+          cloud_time,
+          rclcpp::Duration::from_seconds(0.1));
+      } catch (const tf2::TransformException & ex) {
+        RCLCPP_WARN(
+          get_logger(),
+          "TF lookup failed (%s -> %s): %s",
+          cloud_frame.c_str(),
+          world_frame_.c_str(),
+          ex.what());
+        res->success = false;
+        return;
+      }
+
+      const double t_tf = tt.toc();
 
 
-    try {
       // ------------------------------------------------------------
       // Mask
       // ------------------------------------------------------------
@@ -263,6 +267,8 @@ private:
           mask_vis.rows);
       }
 
+      const double t_mask = tt.toc();
+
 
       // ------------------------------------------------------------
       // PointCloud2 → Open3D
@@ -288,6 +294,8 @@ private:
         return;
       }
 
+      const double t_cloud = tt.toc();
+
       // ------------------------------------------------------------
       // Mask-based cutout
       // ------------------------------------------------------------
@@ -309,6 +317,7 @@ private:
       cutout.points_ = pts_sel;
       cutout.EstimateNormals();
 
+      const double t_cutout = tt.toc();
 
       // ------------------------------------------------------------
       // Pre-process pointcloud
@@ -325,6 +334,8 @@ private:
       cutout.Transform(T_world_cloud);
       cutout.RemoveStatisticalOutliers(20, 2.0);
       cutout.EstimateNormals();
+
+      const double t_pre = tt.toc();
 
       // ------------------------------------------------------------
       // Global registration
@@ -345,6 +356,7 @@ private:
         return;
       }
 
+      const double t_global = tt.toc();
       // ------------------------------------------------------------
       // Local registration
       // ------------------------------------------------------------
@@ -363,6 +375,8 @@ private:
         LOG(get_logger(), "Local registration failed");
         return;
       }
+
+      const double t_icp = tt.toc();
 
       // ------------------------------------------------------------
       // debug visualize cutout and fitted template with frame
@@ -431,6 +445,8 @@ private:
           template_vis->points_.size());
       }
 
+      const double t_debug = tt.toc();
+
 
       LOG(
         get_logger(),
@@ -448,37 +464,32 @@ private:
       res->rmse = result.icp.inlier_rmse_;
       res->success = true;
 
+
+      LOG(
+        get_logger(),
+        "handle_request() finish");
+
+      RCLCPP_INFO(
+        get_logger(),
+        "TIMING [ms] total=%.1f | tf=%.1f mask=%.1f cloud=%.1f cutout=%.1f "
+        "prep=%.1f global=%.1f icp=%.1f debug=%.1f | pts=%zu",
+        tt.total(),
+        t_tf,
+        t_mask,
+        t_cloud,
+        t_cutout,
+        t_pre,
+        t_global,
+        t_icp,
+        t_debug,
+        cutout.points_.size());
+
     } catch (const std::exception & e) {
       RCLCPP_ERROR(
         get_logger(),
         "Registration failed: %s", e.what());
       res->success = false;
     }
-
-    LOG(
-      get_logger(),
-      "handle_request() finish (%.3f s)",
-      (this->now() - t0).seconds());
-  }
-
-  static Eigen::Matrix4d
-  transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
-  {
-    Eigen::Quaterniond q(
-      tf.transform.rotation.w,
-      tf.transform.rotation.x,
-      tf.transform.rotation.y,
-      tf.transform.rotation.z);
-
-    Eigen::Vector3d t(
-      tf.transform.translation.x,
-      tf.transform.translation.y,
-      tf.transform.translation.z);
-
-    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-    T.block<3, 3>(0, 0) = q.toRotationMatrix();
-    T.block<3, 1>(0, 3) = t;
-    return T;
   }
 
 

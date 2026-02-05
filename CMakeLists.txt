@@ -111,6 +111,7 @@ ament_target_dependencies(block_detection_tracking_node
 add_executable(block_registration_node
   src/block_registration_node.cpp
   src/io_utils.cpp
+  src/debug_utils.cpp
 )
 
 target_include_directories(block_registration_node

@@ -3,6 +3,7 @@
 #include <sensor_msgs/msg/point_field.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 std::shared_ptr<open3d::geometry::PointCloud>
 pointcloud2_to_open3d(
@@ -163,4 +164,25 @@ to_ros_pose(const Eigen::Matrix4d & T)
   pose.orientation.w = q.w();
 
   return pose;
+}
+
+
+Eigen::Matrix4d
+transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
+{
+  Eigen::Quaterniond q(
+    tf.transform.rotation.w,
+    tf.transform.rotation.x,
+    tf.transform.rotation.y,
+    tf.transform.rotation.z);
+
+  Eigen::Vector3d t(
+    tf.transform.translation.x,
+    tf.transform.translation.y,
+    tf.transform.translation.z);
+
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  T.block<3, 3>(0, 0) = q.toRotationMatrix();
+  T.block<3, 1>(0, 3) = t;
+  return T;
 }

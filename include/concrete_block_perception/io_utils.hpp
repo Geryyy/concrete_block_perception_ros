@@ -6,6 +6,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <open3d/Open3D.h>
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 std::shared_ptr<open3d::geometry::PointCloud>
 pointcloud2_to_open3d(
@@ -26,3 +27,5 @@ open3d_to_pointcloud2_colored(
 
 geometry_msgs::msg::Pose
 to_ros_pose(const Eigen::Matrix4d & T);
+
+Eigen::Matrix4d transformToEigen(const geometry_msgs::msg::TransformStamped & tf);
