@@ -1,8 +1,12 @@
 #include <deque>
-#include <limits>
+#include <unordered_map>
+#include <mutex>
+#include <atomic>
 #include <sstream>
 #include <iomanip>
+
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -10,7 +14,6 @@
 #include "concrete_block_perception/msg/tracked_detection_array.hpp"
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
-#include <rclcpp_action/rclcpp_action.hpp>
 #include "concrete_block_perception/action/register_block.hpp"
 
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
@@ -21,11 +24,15 @@ using concrete_block_perception::msg::BlockArray;
 
 class WorldModelNode : public rclcpp::Node
 {
-  using RegisterBlockAction =
-    concrete_block_perception::action::RegisterBlock;
+  using RegisterBlock = concrete_block_perception::action::RegisterBlock;
+  using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 
-  using GoalHandleRegisterBlock =
-    rclcpp_action::ClientGoalHandle<RegisterBlockAction>;
+  struct FrameContext
+  {
+    std_msgs::msg::Header header;
+    std::vector<Block> blocks;
+    std::atomic<size_t> pending{0};
+  };
 
 public:
   WorldModelNode()
@@ -34,30 +41,18 @@ public:
     // ----------------------------
     // Parameters
     // ----------------------------
-    min_points_ =
-      declare_parameter<int>("min_points", 50);
-
-    min_fitness_ =
-      declare_parameter<double>("min_fitness", 0.3);
-
-    max_rmse_ =
-      declare_parameter<double>("max_rmse", 0.05);
-
-    object_class_ =
-      declare_parameter<std::string>("object_class", "concrete_block");
-
-    max_dt_ =
-      declare_parameter<double>("sync.max_dt", 0.5);
-
+    min_fitness_ = declare_parameter<double>("min_fitness", 0.3);
+    max_rmse_ = declare_parameter<double>("max_rmse", 0.05);
+    max_dt_ = declare_parameter<double>("sync.max_dt", 0.5);
     max_cloud_buffer_ =
       declare_parameter<int>("sync.cloud_buffer_size", 10);
-
-    service_name_ =
-      declare_parameter<std::string>(
-      "registration.service_name", "/register_block_pose");
+    object_class_ =
+      declare_parameter<std::string>("object_class", "concrete_block");
+    action_name_ =
+      declare_parameter<std::string>("registration.action_name", "register_block");
 
     // ----------------------------
-    // Subscribers
+    // ROS interfaces
     // ----------------------------
     det_sub_ = create_subscription<TrackedDetectionArray>(
       "tracked_detections",
@@ -69,16 +64,6 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&WorldModelNode::cloudCallback, this, std::placeholders::_1));
 
-    // ----------------------------
-    // Client + Publishers
-    // ----------------------------
-    action_client_ =
-      rclcpp_action::create_client<RegisterBlockAction>(
-      this,
-      "register_block");
-
-    WM_LOG(get_logger(), "Waiting for register_block action server...");
-
     world_pub_ =
       create_publisher<BlockArray>("block_world_model", 10);
 
@@ -86,10 +71,15 @@ public:
       create_publisher<visualization_msgs::msg::MarkerArray>(
       "block_world_model_markers", 10);
 
-    WM_LOG(
-      get_logger(),
-      "WorldModelNode started (max_dt=%.2fs buffer=%zu)",
-      max_dt_, max_cloud_buffer_);
+    action_client_ =
+      rclcpp_action::create_client<RegisterBlock>(this, action_name_);
+
+    WM_LOG(get_logger(), "Waiting for action server '%s'...", action_name_.c_str());
+    if (!action_client_->wait_for_action_server(std::chrono::seconds(5))) {
+      throw std::runtime_error("RegisterBlock action server not available");
+    }
+
+    WM_LOG(get_logger(), "WorldModelNode ready");
   }
 
 private:
@@ -114,7 +104,6 @@ private:
     if (!best || best_dt > max_dt_) {
       return nullptr;
     }
-
     return best;
   }
 
@@ -124,31 +113,17 @@ private:
   void detectionsCallback(
     const TrackedDetectionArray::ConstSharedPtr msg)
   {
-    const rclcpp::Time t(msg->stamp);
-
-    // WM_LOG(
-    //   get_logger(),
-    //   "[DETECTIONS] t=%.6f n=%zu",
-    //   t.seconds(), msg->detections.size());
-
-    auto cloud = findClosestCloud(t);
-    if (cloud) {
-      process(msg, cloud);
-    } else {
+    auto cloud = findClosestCloud(rclcpp::Time(msg->stamp));
+    if (!cloud) {
       det_buffer_.push_back(msg);
+      return;
     }
+    processFrame(msg, cloud);
   }
 
   void cloudCallback(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
   {
-    const rclcpp::Time t(msg->header.stamp);
-
-    // WM_LOG(
-    //   get_logger(),
-    //   "[CLOUD] t=%.6f",
-    //   t.seconds());
-
     cloud_buffer_.push_back(msg);
     while (cloud_buffer_.size() > max_cloud_buffer_) {
       cloud_buffer_.pop_front();
@@ -157,7 +132,7 @@ private:
     for (auto it = det_buffer_.begin(); it != det_buffer_.end(); ) {
       auto cloud = findClosestCloud(rclcpp::Time((*it)->stamp));
       if (cloud) {
-        process(*it, cloud);
+        processFrame(*it, cloud);
         it = det_buffer_.erase(it);
       } else {
         ++it;
@@ -166,132 +141,118 @@ private:
   }
 
   // ==========================================================
-  // Processing
+  // Frame processing (non-blocking)
   // ==========================================================
-  void process(
+  void processFrame(
     const TrackedDetectionArray::ConstSharedPtr & detections,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
   {
-    const rclcpp::Time td(detections->stamp);
-    const rclcpp::Time tc(cloud->header.stamp);
-
-    std::string invalid_reason;
-    if (!isCloudValid(*cloud, invalid_reason)) {
-      WM_LOG(
-        get_logger(),
-        "PROCESS abort: invalid cloud (%s)",
-        invalid_reason.c_str());
+    if (detections->detections.empty()) {
+      publishEmpty(cloud->header);
       return;
     }
 
-    const size_t num_points = cloud->width * cloud->height;
+    auto ctx = std::make_shared<FrameContext>();
+    ctx->header = cloud->header;
+    ctx->pending.store(detections->detections.size());
+
+    const uint64_t frame_id = ++frame_counter_;
 
     WM_LOG(
       get_logger(),
-      "PROCESS start: Δt=%.3f sec, detections=%zu, cloud_points=%zu, fields=%zu",
-      std::abs((tc - td).seconds()),
+      "[FRAME %lu] detections=%zu pending=%zu",
+      frame_id,
       detections->detections.size(),
-      num_points,
-      cloud->fields.size());
+      ctx->pending.load());
 
 
-    BlockArray out;
-    out.header = cloud->header;
-
-    if (detections->detections.empty()) {
-      WM_LOG(get_logger(), "No detections → publishing empty BlockArray");
+    {
+      std::lock_guard<std::mutex> lock(frames_mutex_);
+      frames_[frame_id] = ctx;
     }
 
-    size_t idx = 0;
-    for (const auto & td_det : detections->detections) {
-
-      if (!action_client_->wait_for_action_server(
-          std::chrono::seconds(3)))
-      {
-        WM_LOG(
-          get_logger(),
-          "Action server register_block not available");
-        return;
-      }
-
-      RegisterBlockAction::Goal goal;
-      goal.mask = td_det.mask;
+    for (const auto & det : detections->detections) {
+      RegisterBlock::Goal goal;
+      goal.mask = det.mask;
       goal.cloud = *cloud;
       goal.object_class = object_class_;
 
-      WM_LOG(
-        get_logger(),
-        "Sending RegisterBlock goal (id=%u)",
-        td_det.detection_id);
+      auto options =
+        rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
 
-      auto send_goal_options =
-        rclcpp_action::Client<RegisterBlockAction>::SendGoalOptions();
+      options.result_callback =
+        [this, frame_id, det](const auto & result) {
+          handleResult(frame_id, det, result);
+        };
 
-      auto goal_handle_future =
-        action_client_->async_send_goal(goal, send_goal_options);
-
-      if (goal_handle_future.wait_for(std::chrono::seconds(1)) !=
-        std::future_status::ready)
-      {
-        WM_LOG(get_logger(), "Goal rejected or timed out");
-        continue;
-      }
-
-      auto goal_handle = goal_handle_future.get();
-      if (!goal_handle) {
-        WM_LOG(get_logger(), "Goal was rejected");
-        continue;
-      }
-
-      auto result_future =
-        action_client_->async_get_result(goal_handle);
-
-      if (result_future.wait_for(std::chrono::seconds(5)) !=
-        std::future_status::ready)
-      {
-        WM_LOG(
-          get_logger(),
-          "Action result timeout for detection %u",
-          td_det.detection_id);
-        continue;
-      }
-
-      const auto wrapped_result = result_future.get();
-      const auto & res = wrapped_result.result;
-
-      WM_LOG(
-        get_logger(),
-        "Action result: success=%d fitness=%.3f rmse=%.3f",
-        res->success,
-        res->fitness,
-        res->rmse);
-
-      if (!res->success ||
-        res->fitness < min_fitness_ ||
-        res->rmse > max_rmse_)
-      {
-        continue;
-      }
-
-      Block b;
-      b.id = "block_" + std::to_string(td_det.detection_id);
-      b.pose = res->pose;
-      b.confidence = res->fitness;
-      b.last_seen = tc;
-
-      out.blocks.push_back(b);
+      action_client_->async_send_goal(goal, options);
     }
-
-
-    WM_LOG(
-      get_logger(),
-      "Publishing BlockArray: %zu blocks",
-      out.blocks.size());
-
-    world_pub_->publish(out);
-    publishMarkers(out, cloud->header.frame_id, tc);
   }
 
+  // ==========================================================
+  // Action result handling
+  // ==========================================================
+  void handleResult(
+    uint64_t frame_id,
+    const TrackedDetectionArray::_detections_type::value_type & det,
+    const rclcpp_action::ClientGoalHandle<RegisterBlock>::WrappedResult & result)
+  {
+    std::lock_guard<std::mutex> lock(frames_mutex_);
+    auto it = frames_.find(frame_id);
+    if (it == frames_.end()) {return;}
+
+    auto & ctx = it->second;
+
+    RCLCPP_DEBUG(
+      get_logger(),
+      "[FRAME %lu] det=%u success=%d fit=%.3f rmse=%.3f pending=%zu",
+      frame_id,
+      det.detection_id,
+      result.code == rclcpp_action::ResultCode::SUCCEEDED,
+      result.result ? result.result->fitness : -1.0,
+      result.result ? result.result->rmse : -1.0,
+      ctx->pending.load());
+
+    if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+      const auto & res = result.result;
+      if (res->success &&
+        res->fitness >= min_fitness_ &&
+        res->rmse <= max_rmse_)
+      {
+
+        Block b;
+        b.id = "block_" + std::to_string(det.detection_id);
+        b.pose = res->pose;
+        b.confidence = res->fitness;
+        b.last_seen = ctx->header.stamp;
+        ctx->blocks.push_back(b);
+      }
+    }
+
+    if (ctx->pending.fetch_sub(1) == 1) {
+      publishFrame(*ctx);
+      frames_.erase(it);
+    }
+  }
+
+  // ==========================================================
+  // Publishing
+  // ==========================================================
+  void publishFrame(const FrameContext & ctx)
+  {
+    BlockArray out;
+    out.header = ctx.header;
+    out.blocks = ctx.blocks;
+    world_pub_->publish(out);
+    publishMarkers(out, ctx.header.frame_id, ctx.header.stamp);
+  }
+
+  void publishEmpty(const std_msgs::msg::Header & header)
+  {
+    BlockArray out;
+    out.header = header;
+    world_pub_->publish(out);
+  }
 
   // ==========================================================
   // Markers
@@ -303,13 +264,10 @@ private:
   {
     visualization_msgs::msg::MarkerArray arr;
     int id = 0;
-
     for (const auto & b : blocks.blocks) {
-      arr.markers.push_back(makeBlockMarker(b, frame, id, stamp));
-      arr.markers.push_back(makeTextMarker(b, frame, id, stamp));
-      ++id;
+      arr.markers.push_back(makeBlockMarker(b, frame, id++, stamp));
+      arr.markers.push_back(makeTextMarker(b, frame, id++, stamp));
     }
-
     marker_pub_->publish(arr);
   }
 
@@ -364,74 +322,43 @@ private:
     return m;
   }
 
-private:
-  // ----------------------------
-  // Helpers
-  // ----------------------------
-  bool isCloudValid(
-    const sensor_msgs::msg::PointCloud2 & cloud,
-    std::string & reason) const
-  {
-    if (cloud.data.empty()) {
-      reason = "cloud.data is empty";
-      return false;
-    }
+  // ==========================================================
+  // Internal state
+  // ==========================================================
 
-    if (cloud.width == 0 || cloud.height == 0) {
-      reason = "width or height is zero";
-      return false;
-    }
-
-    if (cloud.point_step == 0) {
-      reason = "point_step is zero";
-      return false;
-    }
-
-    if (cloud.row_step == 0) {
-      reason = "row_step is zero";
-      return false;
-    }
-
-    if (cloud.fields.empty()) {
-      reason = "no PointFields";
-      return false;
-    }
-
-    return true;
-  }
-
-  // ----------------------------
-  // Buffers
-  // ----------------------------
   std::deque<TrackedDetectionArray::ConstSharedPtr> det_buffer_;
   std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr> cloud_buffer_;
 
-  // ----------------------------
+  std::unordered_map<uint64_t, std::shared_ptr<FrameContext>> frames_;
+  std::mutex frames_mutex_;
+  std::atomic<uint64_t> frame_counter_{0};
+
   // ROS
-  // ----------------------------
   rclcpp::Subscription<TrackedDetectionArray>::SharedPtr det_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  rclcpp_action::Client<RegisterBlockAction>::SharedPtr action_client_;
-
+  rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
-  // ----------------------------
   // Params
-  // ----------------------------
-  int min_points_;
   double min_fitness_;
   double max_rmse_;
   double max_dt_;
   size_t max_cloud_buffer_;
-  std::string service_name_;
   std::string object_class_;
+  std::string action_name_;
 };
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<WorldModelNode>());
+
+  auto node = std::make_shared<WorldModelNode>();
+  rclcpp::executors::MultiThreadedExecutor exec(
+    rclcpp::ExecutorOptions(), 4);
+  exec.add_node(node);
+  exec.spin();
+
   rclcpp::shutdown();
   return 0;
 }

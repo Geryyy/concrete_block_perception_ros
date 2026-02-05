@@ -389,6 +389,12 @@ private:
       return;
     }
 
+    const auto & icp_scene =
+      glob.plane_cloud ?
+      *glob.plane_cloud :
+      cutout;
+    // ------------
+
     // debug purpose:
     auto transform_ = globalResultToTransform(glob);
     result->pose = to_ros_pose(transform_);
@@ -403,7 +409,7 @@ private:
 
     // publish_feedback("local_registration", 0.9f);
     // LocalRegistrationResult reg;
-    // if (!runLocalRegistration(cutout, glob, reg)) {
+    // if (!runLocalRegistration(icp_scene, glob, reg)) {
     //   result->success = false;
     //   goal_handle->abort(result);
     //   return;
@@ -417,7 +423,7 @@ private:
 
     publish_feedback("visualization", 0.95f);
 
-    publishDebugVisualization(*goal, cutout, template_index, transformation);
+    publishDebugVisualization(*goal, icp_scene, template_index, transformation);
     RCLCPP_INFO(
       get_logger(),
       "[visualization] stage took %.1f ms",
@@ -435,7 +441,7 @@ private:
       get_logger(),
       "EXEC DONE in %.1f ms | pts=%zu",
       tt_total.total(),
-      cutout.points_.size());
+      icp_scene.points_.size());
   }
 
   // --------------------------------------------------------

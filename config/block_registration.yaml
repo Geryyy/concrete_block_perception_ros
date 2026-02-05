@@ -27,7 +27,7 @@ block_registration_node:
     # ------------------------------------------------------------
     glob_reg:
       # Distance threshold for plane inliers [m]
-      dist_thresh: 0.02
+      dist_thresh: 0.05
       # Minimum number of inliers per plane
       min_inliers: 100
       # Maximum angle (deg) between plane normal and world Z
