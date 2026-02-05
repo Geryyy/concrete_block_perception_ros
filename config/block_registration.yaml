@@ -1,38 +1,46 @@
 block_registration_node:
   ros__parameters:
 
+    calib_yaml: calib_zed2i_to_seyond.yaml
+    world_frame: world
     # ------------------------------------------------------------
     # Calibration & templates
     # ------------------------------------------------------------
-    # Leave empty to use the default resolved via ament_index
-    # (concrete_block_perception/config/calib_zed2i_to_seyond.yaml)
-    # calib_yaml: ""
+    # all paths are relative to package/config
 
-    # Leave empty to use default
-    # (concrete_block_perception/config/templates)
-    # template_dir: ""
+    template:
+      dir: "/templates"
+      cad_name: "ConcreteBlock.ply"
+      n_points: 2000
+      angle_deg: 30.0
 
     # ------------------------------------------------------------
     # Global registration (plane extraction)
     # ------------------------------------------------------------
-    # Distance threshold for plane inliers [m]
-    dist_thresh: 0.02
+    preproc:
+      max_pts: 1000
+      nb_neighbors: 5
+      std_dev: 1.0
 
-    # Minimum number of inliers per plane
-    min_inliers: 100
+    # ------------------------------------------------------------
+    # Global registration (plane extraction)
+    # ------------------------------------------------------------
+    glob_reg:
+      # Distance threshold for plane inliers [m]
+      dist_thresh: 0.02
+      # Minimum number of inliers per plane
+      min_inliers: 100
+      # Maximum angle (deg) between plane normal and world Z
+      angle_thresh_degree: 30.0
 
-    # Maximum angle (deg) between plane normal and world Z
-    angle_thresh_degree: 30.0
-
-    world_frame: world
     # ------------------------------------------------------------
     # Local registration (ICP)
     # ------------------------------------------------------------
-    # Max correspondence distance for ICP [m]
-    icp_dist: 0.04
-
-    # Template yaw sampling step [deg]
-    yaw_step: 30
+    loc_reg:
+      # Max correspondence distance for ICP [m]
+      icp_dist: 0.02
+      # Template yaw sampling step [deg]
+      yaw_step: 30
 
     debug:
       publish_cutout: true

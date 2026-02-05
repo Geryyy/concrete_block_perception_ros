@@ -34,6 +34,29 @@ using namespace open3d;
 
 #define LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
 
+
+struct PreprocessingParams
+{
+  size_t max_pts = 200;
+  // open3D RemoveStatisticalOutliers
+  int nb_neighbors = 20;
+  double std_dev = 2.0;
+};
+struct GlobalRegistrationParams
+{
+  static constexpr int MAX_PLANES = 3;
+  Eigen::Vector3d Z_WORLD = Eigen::Vector3d(0.0, 0.0, 1.0);
+  double dist_thresh;
+  int min_inliers;
+  double angle_thresh;
+};
+
+struct LocalRegistrationParams
+{
+  double icp_dist;
+  int yaw_step;
+};
+
 class BlockRegistrationNode : public rclcpp::Node
 {
   using RegisterBlockAction =
@@ -56,62 +79,91 @@ public:
     const std::string default_calib_yaml =
       pkg_share + "/config/calib_zed2i_to_seyond.yaml";
 
-    const std::string default_template_dir =
-      pkg_share + "/config/templates";
+    const std::string config_dir =
+      pkg_share + "/config";
 
     // ------------------------------------------------------------
     // Parameters
     // ------------------------------------------------------------
     declare_parameter<std::string>("calib_yaml", "");
-    declare_parameter<std::string>("template_dir", "");
     declare_parameter<std::string>("world_frame", "world");
-    declare_parameter<double>("dist_thresh", 0.02);
-    declare_parameter<int>("min_inliers", 100);
-    declare_parameter<double>("icp_dist", 0.04);
-    declare_parameter<double>("angle_thresh_degree", 30.0);
-    declare_parameter<int>("yaw_step", 30);
 
-    calib_yaml = get_parameter("calib_yaml").as_string();
-    template_dir = get_parameter("template_dir").as_string();
+    declare_parameter<std::string>("template.dir", "/templates");
+    declare_parameter<std::string>("template.cad_name", "ConcreteBlock.ply");
+    declare_parameter<int>("template.n_points", 2000);
+    declare_parameter<double>("template.angle_deg", 15.0);
 
-    if (calib_yaml.empty()) {
-      calib_yaml = default_calib_yaml;
-    }
-    if (template_dir.empty()) {
-      template_dir = default_template_dir;
-    }
+    declare_parameter<int>("preproc.max_pts", 500);
+    declare_parameter<int>("preproc.nb_neighbors", 20);
+    declare_parameter<double>("preproc.std_dev", 2.0);
 
+    declare_parameter<double>("glob_reg.dist_thresh", 0.02);
+    declare_parameter<int>("glob_reg.min_inliers", 100);
+    declare_parameter<double>("glob_reg.angle_thresh_degree", 30.0);
+
+    declare_parameter<double>("loc_reg.icp_dist", 0.04);
+    declare_parameter<int>("loc_reg.yaw_step", 30);
+
+    auto calib_yaml_name = get_parameter("calib_yaml").as_string();
+    calib_yaml_ = config_dir + "/" + calib_yaml_name;
     world_frame_ = get_parameter("world_frame").as_string();
-    dist_thresh = get_parameter("dist_thresh").as_double();
-    min_inliers = get_parameter("min_inliers").as_int();
-    icp_dist = get_parameter("icp_dist").as_double();
-    yaw_step = get_parameter("yaw_step").as_int();
+
+    auto template_dir_ = get_parameter("template.dir").as_string();
+    auto template_cad_name_ = get_parameter("template.cad_name").as_string();
+    template_params_.n_points = get_parameter("template.n_points").as_int();
+    template_params_.angle_deg = get_parameter("template.angle_deg").as_double();
+    template_params_.cad_path = config_dir + "/" + template_cad_name_;
+    template_params_.out_dir = config_dir + template_dir_;
+
+    preproc_params_.max_pts = get_parameter("preproc.max_pts").as_int();
+    preproc_params_.nb_neighbors = get_parameter("preproc.nb_neighbors").as_int();
+    preproc_params_.std_dev = get_parameter("preproc.std_dev").as_double();
 
     double angle_thresh_deg =
-      get_parameter("angle_thresh_degree").as_double();
-    angle_thresh = std::cos(angle_thresh_deg * M_PI / 180.0);
+      get_parameter("glob_reg.angle_thresh_degree").as_double();
+    glob_reg_params_.angle_thresh = std::cos(angle_thresh_deg * M_PI / 180.0);
+    glob_reg_params_.dist_thresh = get_parameter("glob_reg.dist_thresh").as_double();
+    glob_reg_params_.min_inliers = get_parameter("glob_reg.min_inliers").as_int();
+
+    loc_reg_params_.icp_dist = get_parameter("loc_reg.icp_dist").as_double();
+    loc_reg_params_.yaw_step = get_parameter("loc_reg.yaw_step").as_int();
+
+    if (calib_yaml_.empty()) {
+      throw std::runtime_error(
+              "Parameter 'calib_yaml' is empty. "
+              "Expected path to calibration YAML.");
+    }
+
+    if (template_params_.out_dir.empty()) {
+      throw std::runtime_error(
+              "Parameter 'template_dir' is empty. "
+              "Expected directory containing templates.");
+    }
+
+    if (template_cad_name_.empty()) {
+      throw std::runtime_error(
+              "Parameter 'template_cad_name' is empty. "
+              "Expected CAD filename (e.g. ConcreteBlock.ply).");
+    }
 
     // ------------------------------------------------------------
     // Validate files
     // ------------------------------------------------------------
-    if (!std::filesystem::exists(calib_yaml)) {
+    if (!std::filesystem::exists(calib_yaml_)) {
       throw std::runtime_error(
-              "Calibration YAML not found: " + calib_yaml);
+              "Calibration YAML not found: " + calib_yaml_);
     }
-    if (!std::filesystem::exists(template_dir)) {
-      throw std::runtime_error(
-              "Template directory not found: " + template_dir);
+    if (!std::filesystem::exists(template_params_.out_dir)) {
+      RCLCPP_INFO(get_logger(), "Generating templates from %s", template_params_.cad_path.c_str());
+      generate_templates(template_params_);
     }
 
     // ------------------------------------------------------------
     // Load data
     // ------------------------------------------------------------
-    T_P_C_ = load_T_4x4(calib_yaml);
-    K_ = load_camera_matrix(calib_yaml);
-    templates_ = load_templates(template_dir);
-
-    // Z_WORLD = Eigen::Vector3d(0.0, -1.0, 0.0);
-    Z_WORLD = Eigen::Vector3d(0.0, 0.0, 1.0);
+    T_P_C_ = load_T_4x4(calib_yaml_);
+    K_ = load_camera_matrix(calib_yaml_);
+    templates_ = load_templates(template_params_.out_dir);
 
     // ------------------------------------------------------------
     // Service (SERIALIZED!)
@@ -196,18 +248,16 @@ public:
         debug_mask_pub_->get_topic_name());
     }
 
-    // TODO: generate templates if not existant
-
 
     RCLCPP_INFO(
       get_logger(),
       "Block registration action ready");
     RCLCPP_INFO(
       get_logger(),
-      "  calib_yaml:   %s", calib_yaml.c_str());
+      "  calib_yaml:   %s", calib_yaml_.c_str());
     RCLCPP_INFO(
       get_logger(),
-      "  template_dir: %s", template_dir.c_str());
+      "  template_dir: %s", template_params_.out_dir.c_str());
   }
 
 private:
@@ -257,10 +307,25 @@ private:
     auto result =
       std::make_shared<RegisterBlockAction::Result>();
 
-    TicToc tt;
+    TicToc tt_total;
+    TicToc tt_stage;
+
+    auto publish_feedback =
+      [&](const std::string & stage, float progress)
+      {
+        RegisterBlockAction::Feedback fb;
+        fb.stage = stage;
+        fb.progress = progress;
+        fb.elapsed_ms = tt_total.total();
+        goal_handle->publish_feedback(
+          std::make_shared<RegisterBlockAction::Feedback>(fb));
+
+        tt_stage.tic();
+      };
 
     LOG(get_logger(), "execute() start");
 
+    publish_feedback("tf_lookup", 0.1f);
     geometry_msgs::msg::TransformStamped tf_cloud;
     if (!lookupCloudTransform(*goal, tf_cloud)) {
       result->success = false;
@@ -268,11 +333,22 @@ private:
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
+    RCLCPP_INFO(
+      get_logger(),
+      "[tf_lookup] stage took %.1f ms",
+      tt_stage.toc());
 
+
+    publish_feedback("mask_conversion", 0.2f);
     cv::Mat mask = convertMask(*goal);
     publishDebugMask(*goal, mask);
     if (check_cancel(goal_handle, result)) {return;}
+    RCLCPP_INFO(
+      get_logger(),
+      "[mask_conversion] stage took %.1f ms",
+      tt_stage.toc());
 
+    publish_feedback("cloud_conversion", 0.3f);
     auto scene = convertCloud(*goal);
     if (scene->points_.empty()) {
       result->success = false;
@@ -280,7 +356,12 @@ private:
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
+    RCLCPP_INFO(
+      get_logger(),
+      "[cloud_conversion] stage took %.1f ms",
+      tt_stage.toc());
 
+    publish_feedback("cutout", 0.4f);
     geometry::PointCloud cutout;
     if (!computeCutout(*scene, mask, cutout)) {
       result->success = false;
@@ -288,9 +369,19 @@ private:
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
+    RCLCPP_INFO(
+      get_logger(),
+      "[cutout] stage took %.1f ms",
+      tt_stage.toc());
 
+    publish_feedback("preprocess", 0.5f);
     preprocessCutout(cutout, tf_cloud);
+    RCLCPP_INFO(
+      get_logger(),
+      "[preprocess] stage took %.1f ms",
+      tt_stage.toc());
 
+    publish_feedback("global_registration", 0.7f);
     GlobalRegistrationResult glob;
     if (!runGlobalRegistration(cutout, glob)) {
       result->success = false;
@@ -298,26 +389,52 @@ private:
       return;
     }
 
-    LocalRegistrationResult reg;
-    if (!runLocalRegistration(cutout, glob, reg)) {
-      result->success = false;
-      goal_handle->abort(result);
-      return;
-    }
-
-    publishDebugVisualization(*goal, cutout, reg);
-
-    result->pose = to_ros_pose(reg.icp.transformation_);
-    result->fitness = reg.icp.fitness_;
-    result->rmse = reg.icp.inlier_rmse_;
+    // debug purpose:
+    auto transform_ = globalResultToTransform(glob);
+    result->pose = to_ros_pose(transform_);
     result->success = true;
+    auto transformation = transform_;
+    int template_index = 0;
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[global_registration] stage took %.1f ms",
+      tt_stage.toc());
+
+    // publish_feedback("local_registration", 0.9f);
+    // LocalRegistrationResult reg;
+    // if (!runLocalRegistration(cutout, glob, reg)) {
+    //   result->success = false;
+    //   goal_handle->abort(result);
+    //   return;
+    // }
+    // RCLCPP_INFO(
+    //   get_logger(),
+    //   "[local_registration] stage took %.1f ms",
+    //   tt_stage.toc());
+    // auto transformation = reg.icp.transformations_;
+    // int template_index = reg.template_index;
+
+    publish_feedback("visualization", 0.95f);
+
+    publishDebugVisualization(*goal, cutout, template_index, transformation);
+    RCLCPP_INFO(
+      get_logger(),
+      "[visualization] stage took %.1f ms",
+      tt_stage.toc());
+
+    // result->pose = to_ros_pose(reg.icp.transformation_);
+    // result->fitness = reg.icp.fitness_;
+    // result->rmse = reg.icp.inlier_rmse_;
+    // result->success = true;
 
     goal_handle->succeed(result);
+    publish_feedback("done", 1.0f);
 
     RCLCPP_INFO(
       get_logger(),
       "EXEC DONE in %.1f ms | pts=%zu",
-      tt.total(),
+      tt_total.total(),
       cutout.points_.size());
   }
 
@@ -411,16 +528,33 @@ private:
   }
 
   void preprocessCutout(
-    geometry::PointCloud & cutout,
+    open3d::geometry::PointCloud & cutout,
     const geometry_msgs::msg::TransformStamped & tf)
   {
-    Eigen::Matrix4d T = transformToEigen(tf);
+    std::shared_ptr<open3d::geometry::PointCloud> pcd;
+    std::vector<size_t> ind;
 
-    cutout.RemoveStatisticalOutliers(20, 2.0);
-    cutout.Transform(T);
-    cutout.RemoveStatisticalOutliers(20, 2.0);
-    cutout.EstimateNormals();
+    std::tie(pcd, ind) =
+      cutout.RemoveStatisticalOutliers(
+      preproc_params_.nb_neighbors,
+      preproc_params_.std_dev);
+
+    cutout = *pcd;
+
+    if (cutout.points_.size() > preproc_params_.max_pts) {
+      std::vector<size_t> idx(cutout.points_.size());
+      std::iota(idx.begin(), idx.end(), 0);
+      static thread_local std::mt19937 rng{42};
+      std::shuffle(idx.begin(), idx.end(), rng);
+      idx.resize(preproc_params_.max_pts);
+      cutout = *cutout.SelectByIndex(idx);
+    }
+
+    cutout.Transform(transformToEigen(tf));
+    cutout.EstimateNormals(
+      open3d::geometry::KDTreeSearchParamHybrid(0.02, 30));
   }
+
 
   bool runGlobalRegistration(
     const geometry::PointCloud & cutout,
@@ -428,11 +562,11 @@ private:
   {
     out = compute_global_registration(
       cutout,
-      Z_WORLD,
-      angle_thresh,
-      MAX_PLANES,
-      dist_thresh,
-      min_inliers);
+      glob_reg_params_.Z_WORLD,
+      glob_reg_params_.angle_thresh,
+      glob_reg_params_.MAX_PLANES,
+      glob_reg_params_.dist_thresh,
+      glob_reg_params_.min_inliers);
 
     return out.success;
   }
@@ -446,8 +580,8 @@ private:
       cutout,
       templates_,
       glob,
-      icp_dist,
-      yaw_step);
+      loc_reg_params_.icp_dist,
+      loc_reg_params_.yaw_step);
 
     return out.success;
   }
@@ -455,7 +589,8 @@ private:
   void publishDebugVisualization(
     const RegisterBlockAction::Goal & goal,
     const geometry::PointCloud & cutout,
-    const LocalRegistrationResult & reg)
+    const int template_index,
+    const Eigen::Matrix4d homogeneous_transformation)
   {
     if (!publish_debug_cutout_) {return;}
 
@@ -471,8 +606,8 @@ private:
     // Template (green)
     auto tpl =
       std::make_shared<geometry::PointCloud>(
-      *templates_[reg.template_index].pcd);
-    tpl->Transform(reg.icp.transformation_);
+      *templates_[template_index].pcd);
+    tpl->Transform(homogeneous_transformation);
     tpl->PaintUniformColor({0, 1, 0});
 
     debug_template_pub_->publish(
@@ -485,7 +620,7 @@ private:
     tf.header.frame_id = world_frame_;
     tf.child_frame_id = "block_debug";
 
-    Eigen::Matrix4d T = reg.icp.transformation_;
+    Eigen::Matrix4d T = homogeneous_transformation;
     Eigen::Quaterniond q(T.block<3, 3>(0, 0));
 
     tf.transform.translation.x = T(0, 3);
@@ -516,18 +651,14 @@ private:
   Eigen::Matrix4d T_P_C_;
   Eigen::Matrix3d K_;
   std::vector<TemplateData> templates_;
-  Eigen::Vector3d Z_WORLD;
 
-  static constexpr int MAX_PLANES = 3;
 
-  std::string calib_yaml;
-  std::string template_dir;
-  double dist_thresh;
-  int min_inliers;
-  double icp_dist;
-  double angle_thresh;
-  int yaw_step;
+  std::string calib_yaml_;
   std::string world_frame_;
+  TemplateGenerationParams template_params_;
+  PreprocessingParams preproc_params_;
+  GlobalRegistrationParams glob_reg_params_;
+  LocalRegistrationParams loc_reg_params_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

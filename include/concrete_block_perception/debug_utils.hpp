@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <rclcpp/rclcpp.hpp>
 
 struct TicToc
 {
@@ -8,6 +9,7 @@ struct TicToc
 
   TicToc();
 
+  void tic();
   double toc();
   double total() const;
 

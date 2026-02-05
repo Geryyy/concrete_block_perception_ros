@@ -4,6 +4,11 @@
 TicToc::TicToc()
 : t0(Clock::now()), t_last(t0) {}
 
+void TicToc::tic()
+{
+  t0 = Clock::now();
+}
+
 double TicToc::toc()
 {
   const auto now = Clock::now();

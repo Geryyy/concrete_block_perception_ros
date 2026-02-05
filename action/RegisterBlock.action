@@ -14,3 +14,4 @@ float32 rmse
 # ===== Feedback =====
 string stage
 float32 progress
+float32 elapsed_ms
