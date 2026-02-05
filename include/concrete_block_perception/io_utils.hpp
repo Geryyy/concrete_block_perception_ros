@@ -18,5 +18,11 @@ open3d_to_pointcloud2(
   const std::string & frame_id,
   const rclcpp::Time & stamp);
 
+sensor_msgs::msg::PointCloud2
+open3d_to_pointcloud2_colored(
+  const open3d::geometry::PointCloud & cloud,
+  const std::string & frame_id,
+  const rclcpp::Time & stamp);
+
 geometry_msgs::msg::Pose
 to_ros_pose(const Eigen::Matrix4d & T);

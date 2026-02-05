@@ -4,6 +4,13 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/buffer.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <cv_bridge/cv_bridge.h>
 #include <open3d/Open3D.h>
@@ -56,6 +63,15 @@ public:
     declare_parameter<double>("angle_thresh_degree", 30.0);
     declare_parameter<int>("yaw_step", 30);
 
+    world_frame_ =
+      declare_parameter<std::string>("world_frame", "world");
+
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ =
+      std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_broadcaster_ =
+      std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
     calib_yaml = get_parameter("calib_yaml").as_string();
     template_dir = get_parameter("template_dir").as_string();
 
@@ -94,7 +110,8 @@ public:
     K_ = load_camera_matrix(calib_yaml);
     templates_ = load_templates(template_dir);
 
-    Z_WORLD = Eigen::Vector3d(0.0, -1.0, 0.0);
+    // Z_WORLD = Eigen::Vector3d(0.0, -1.0, 0.0);
+    Z_WORLD = Eigen::Vector3d(0.0, 0.0, 1.0);
 
     // ------------------------------------------------------------
     // Service (SERIALIZED!)
@@ -124,10 +141,24 @@ public:
         create_publisher<sensor_msgs::msg::PointCloud2>(
         "debug/cutout_cloud", 1);
 
+      debug_template_pub_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>(
+        "debug/template_cloud", 1);
+
+
       RCLCPP_INFO(
         get_logger(),
         "Publishing debug cutout cloud on %s",
         debug_cutout_pub_->get_topic_name());
+
+      RCLCPP_INFO(
+        get_logger(),
+        "Publishing template cloud on %s",
+        debug_template_pub_->get_topic_name());
+
+      RCLCPP_INFO(
+        get_logger(),
+        "Publishing debug block frame as tf");
     }
 
     publish_debug_mask_ =
@@ -143,6 +174,8 @@ public:
         "Publishing debug segmentation mask on %s",
         debug_mask_pub_->get_topic_name());
     }
+
+    // TODO: generate templates if not existant
 
 
     RCLCPP_INFO(
@@ -171,6 +204,34 @@ private:
     LOG(
       get_logger(),
       "handle_request() start [tid=%lu]", tid);
+
+    // ------------------------------------------------------------
+    // get tf transformation: lidar -> world
+    // ------------------------------------------------------------
+
+    const std::string cloud_frame = req->cloud.header.frame_id;
+    const rclcpp::Time cloud_time(req->cloud.header.stamp);
+
+    geometry_msgs::msg::TransformStamped tf_cloud_to_world;
+
+    try {
+      tf_cloud_to_world =
+        tf_buffer_->lookupTransform(
+        world_frame_,   // target
+        cloud_frame,    // source
+        cloud_time,
+        rclcpp::Duration::from_seconds(0.1));
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        get_logger(),
+        "TF lookup failed (%s -> %s): %s",
+        cloud_frame.c_str(),
+        world_frame_.c_str(),
+        ex.what());
+      res->success = false;
+      return;
+    }
+
 
     try {
       // ------------------------------------------------------------
@@ -248,30 +309,22 @@ private:
       cutout.points_ = pts_sel;
       cutout.EstimateNormals();
 
+
       // ------------------------------------------------------------
-      // Debug: publish cutout point cloud
+      // Pre-process pointcloud
       // ------------------------------------------------------------
-      if (publish_debug_cutout_ && debug_cutout_pub_) {
-        sensor_msgs::msg::PointCloud2 msg =
-          open3d_to_pointcloud2(
-          cutout,
-          req->cloud.header.frame_id,
-          rclcpp::Time(req->cloud.header.stamp));
 
-        msg.header = req->cloud.header; // preserve frame + timestamp
-        debug_cutout_pub_->publish(msg);
+      // Convert TF → Eigen
+      Eigen::Matrix4d T_world_cloud =
+        transformToEigen(tf_cloud_to_world);
 
-        LOG(
-          get_logger(),
-          "Published cutout cloud (%zu points)",
-          cutout.points_.size());
-      }
+      // Optional filtering before transform
+      cutout.RemoveStatisticalOutliers(20, 2.0);
 
-      LOG(
-        get_logger(),
-        "Cutout stats: n=%zu (min required=%d)",
-        cutout.points_.size(),
-        min_inliers);
+      // Apply transform
+      cutout.Transform(T_world_cloud);
+      cutout.RemoveStatisticalOutliers(20, 2.0);
+      cutout.EstimateNormals();
 
       // ------------------------------------------------------------
       // Global registration
@@ -311,7 +364,80 @@ private:
         return;
       }
 
-      // TODO: convert to world frame!
+      // ------------------------------------------------------------
+      // debug visualize cutout and fitted template with frame
+      // ------------------------------------------------------------
+      if (publish_debug_cutout_) {
+
+        const auto stamp =
+          rclcpp::Time(req->cloud.header.stamp);
+        const auto frame_id = world_frame_;
+
+        // ------------------------------------------------------------
+        // 1) CUTOUT CLOUD (RED)
+        // ------------------------------------------------------------
+        geometry::PointCloud cutout_vis = cutout;
+        cutout_vis.PaintUniformColor({1.0, 0.0, 0.0});
+
+        auto cutout_msg =
+          open3d_to_pointcloud2_colored(
+          cutout_vis, frame_id, stamp);
+
+        debug_cutout_pub_->publish(cutout_msg);
+
+        // ------------------------------------------------------------
+        // 2) FITTED TEMPLATE (GREEN)
+        // ------------------------------------------------------------
+        auto template_vis =
+          std::make_shared<geometry::PointCloud>(
+          *templates_[result.template_index].pcd);
+
+        template_vis->Transform(result.icp.transformation_);
+        template_vis->PaintUniformColor({0.0, 1.0, 0.0});
+
+        auto template_msg =
+          open3d_to_pointcloud2_colored(
+          *template_vis, frame_id, stamp);
+
+        debug_template_pub_->publish(template_msg);
+
+        // ------------------------------------------------------------
+        // Publish estimated block pose as TF
+        // ------------------------------------------------------------
+        geometry_msgs::msg::TransformStamped tf_msg;
+
+        tf_msg.header.stamp = stamp;
+        tf_msg.header.frame_id = world_frame_; // e.g. "world"
+        tf_msg.child_frame_id = "block_debug";
+
+        Eigen::Matrix4d T = result.icp.transformation_;
+        Eigen::Quaterniond q(T.block<3, 3>(0, 0));
+
+        tf_msg.transform.translation.x = T(0, 3);
+        tf_msg.transform.translation.y = T(1, 3);
+        tf_msg.transform.translation.z = T(2, 3);
+
+        tf_msg.transform.rotation.x = q.x();
+        tf_msg.transform.rotation.y = q.y();
+        tf_msg.transform.rotation.z = q.z();
+        tf_msg.transform.rotation.w = q.w();
+
+        tf_broadcaster_->sendTransform(tf_msg);
+
+        LOG(
+          get_logger(),
+          "Published debug vis: cutout=%zu template=%zu",
+          cutout.points_.size(),
+          template_vis->points_.size());
+      }
+
+
+      LOG(
+        get_logger(),
+        "Cutout stats: n=%zu (min required=%d)",
+        cutout.points_.size(),
+        min_inliers);
+
 
       // ------------------------------------------------------------
       // Response
@@ -335,6 +461,26 @@ private:
       (this->now() - t0).seconds());
   }
 
+  static Eigen::Matrix4d
+  transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
+  {
+    Eigen::Quaterniond q(
+      tf.transform.rotation.w,
+      tf.transform.rotation.x,
+      tf.transform.rotation.y,
+      tf.transform.rotation.z);
+
+    Eigen::Vector3d t(
+      tf.transform.translation.x,
+      tf.transform.translation.y,
+      tf.transform.translation.z);
+
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = q.toRotationMatrix();
+    T.block<3, 1>(0, 3) = t;
+    return T;
+  }
+
 
   // --------------------------------------------------------
   // Members
@@ -343,6 +489,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr service_cb_group_;
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_cutout_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_template_pub_;
   bool publish_debug_cutout_;
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_mask_pub_;
@@ -362,6 +509,11 @@ private:
   double icp_dist;
   double angle_thresh;
   int yaw_step;
+  std::string world_frame_;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };
 
 int main(int argc, char ** argv)

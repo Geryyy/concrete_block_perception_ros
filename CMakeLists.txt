@@ -130,7 +130,11 @@ ament_target_dependencies(block_registration_node
   sensor_msgs
   geometry_msgs
   vision_msgs
+  visualization_msgs
   cv_bridge
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 # ------------------------------------------------------------

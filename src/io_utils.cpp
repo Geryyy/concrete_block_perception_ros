@@ -2,6 +2,7 @@
 #include <Eigen/Geometry>
 #include <sensor_msgs/msg/point_field.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 std::shared_ptr<open3d::geometry::PointCloud>
 pointcloud2_to_open3d(
@@ -82,6 +83,58 @@ open3d_to_pointcloud2(
     f[2] = static_cast<float>(p.z());
 
     ptr += msg.point_step;
+  }
+
+  return msg;
+}
+
+
+sensor_msgs::msg::PointCloud2
+open3d_to_pointcloud2_colored(
+  const open3d::geometry::PointCloud & cloud,
+  const std::string & frame_id,
+  const rclcpp::Time & stamp)
+{
+  sensor_msgs::msg::PointCloud2 msg;
+
+  msg.header.frame_id = frame_id;
+  msg.header.stamp = stamp;
+
+  msg.height = 1;
+  msg.width = static_cast<uint32_t>(cloud.points_.size());
+  msg.is_dense = false;
+  msg.is_bigendian = false;
+
+  // Let ROS define the layout
+  sensor_msgs::PointCloud2Modifier modifier(msg);
+  modifier.setPointCloud2FieldsByString(2, "xyz", "rgb");
+  modifier.resize(cloud.points_.size());
+
+  // Iterators (type-safe, no UB)
+  sensor_msgs::PointCloud2Iterator<float> iter_x(msg, "x");
+  sensor_msgs::PointCloud2Iterator<float> iter_y(msg, "y");
+  sensor_msgs::PointCloud2Iterator<float> iter_z(msg, "z");
+  sensor_msgs::PointCloud2Iterator<uint8_t> iter_r(msg, "r");
+  sensor_msgs::PointCloud2Iterator<uint8_t> iter_g(msg, "g");
+  sensor_msgs::PointCloud2Iterator<uint8_t> iter_b(msg, "b");
+
+  for (size_t i = 0; i < cloud.points_.size();
+    ++i, ++iter_x, ++iter_y, ++iter_z,
+    ++iter_r, ++iter_g, ++iter_b)
+  {
+    const auto & p = cloud.points_[i];
+    *iter_x = static_cast<float>(p.x());
+    *iter_y = static_cast<float>(p.y());
+    *iter_z = static_cast<float>(p.z());
+
+    Eigen::Vector3d c =
+      cloud.colors_.empty() ?
+      Eigen::Vector3d(1.0, 1.0, 1.0) :
+      cloud.colors_[i];
+
+    *iter_r = static_cast<uint8_t>(c.x() * 255);
+    *iter_g = static_cast<uint8_t>(c.y() * 255);
+    *iter_b = static_cast<uint8_t>(c.z() * 255);
   }
 
   return msg;

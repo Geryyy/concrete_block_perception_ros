@@ -24,6 +24,7 @@ block_registration_node:
     # Maximum angle (deg) between plane normal and world Z
     angle_thresh_degree: 30.0
 
+    world_frame: world
     # ------------------------------------------------------------
     # Local registration (ICP)
     # ------------------------------------------------------------
@@ -35,4 +36,4 @@ block_registration_node:
 
     debug:
       publish_cutout: true
-      publish_mask: true
+      publish_mask: false
