@@ -1,0 +1,16 @@
+# ===== Goal =====
+sensor_msgs/Image mask
+sensor_msgs/PointCloud2 cloud
+string object_class
+
+---
+# ===== Result =====
+bool success
+geometry_msgs/Pose pose
+float32 fitness
+float32 rmse
+
+---
+# ===== Feedback =====
+string stage
+float32 progress

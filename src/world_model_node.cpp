@@ -10,17 +10,23 @@
 #include "concrete_block_perception/msg/tracked_detection_array.hpp"
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
-#include "concrete_block_perception/srv/register_block.hpp"
+#include <rclcpp_action/rclcpp_action.hpp>
+#include "concrete_block_perception/action/register_block.hpp"
 
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
 
 using concrete_block_perception::msg::TrackedDetectionArray;
 using concrete_block_perception::msg::Block;
 using concrete_block_perception::msg::BlockArray;
-using concrete_block_perception::srv::RegisterBlock;
 
 class WorldModelNode : public rclcpp::Node
 {
+  using RegisterBlockAction =
+    concrete_block_perception::action::RegisterBlock;
+
+  using GoalHandleRegisterBlock =
+    rclcpp_action::ClientGoalHandle<RegisterBlockAction>;
+
 public:
   WorldModelNode()
   : Node("block_world_model_node")
@@ -66,7 +72,12 @@ public:
     // ----------------------------
     // Client + Publishers
     // ----------------------------
-    reg_client_ = create_client<RegisterBlock>(service_name_);
+    action_client_ =
+      rclcpp_action::create_client<RegisterBlockAction>(
+      this,
+      "register_block");
+
+    WM_LOG(get_logger(), "Waiting for register_block action server...");
 
     world_pub_ =
       create_publisher<BlockArray>("block_world_model", 10);
@@ -193,96 +204,75 @@ private:
 
     size_t idx = 0;
     for (const auto & td_det : detections->detections) {
-      WM_LOG(
-        get_logger(),
-        "Detection[%zu]: id=%u, mask size=%ux%u",
-        idx,
-        td_det.detection_id,
-        td_det.mask.width,
-        td_det.mask.height);
 
-      // ------------------------------------------------------------
-      // Service availability
-      // ------------------------------------------------------------
-      if (!reg_client_->wait_for_service(std::chrono::milliseconds(3000))) {
+      if (!action_client_->wait_for_action_server(
+          std::chrono::seconds(3)))
+      {
         WM_LOG(
           get_logger(),
-          "Service register_block_pose not available (skipping all detections)");
-        return; // NOTE: this aborts the *entire* callback
+          "Action server register_block not available");
+        return;
       }
 
-      auto req = std::make_shared<RegisterBlock::Request>();
-      req->mask = td_det.mask;
-      req->cloud = *cloud;
-      req->object_class = object_class_;
+      RegisterBlockAction::Goal goal;
+      goal.mask = td_det.mask;
+      goal.cloud = *cloud;
+      goal.object_class = object_class_;
 
       WM_LOG(
         get_logger(),
-        "Sending registration request (object_class=%s)",
-        object_class_.c_str());
+        "Sending RegisterBlock goal (id=%u)",
+        td_det.detection_id);
 
-      auto future = reg_client_->async_send_request(req);
+      auto send_goal_options =
+        rclcpp_action::Client<RegisterBlockAction>::SendGoalOptions();
 
-      // ------------------------------------------------------------
-      // Service response timeout
-      // ------------------------------------------------------------
-      if (future.wait_for(std::chrono::milliseconds(3000)) !=
+      auto goal_handle_future =
+        action_client_->async_send_goal(goal, send_goal_options);
+
+      if (goal_handle_future.wait_for(std::chrono::seconds(1)) !=
+        std::future_status::ready)
+      {
+        WM_LOG(get_logger(), "Goal rejected or timed out");
+        continue;
+      }
+
+      auto goal_handle = goal_handle_future.get();
+      if (!goal_handle) {
+        WM_LOG(get_logger(), "Goal was rejected");
+        continue;
+      }
+
+      auto result_future =
+        action_client_->async_get_result(goal_handle);
+
+      if (result_future.wait_for(std::chrono::seconds(5)) !=
         std::future_status::ready)
       {
         WM_LOG(
           get_logger(),
-          "Registration timeout (>200 ms) for detection %u",
+          "Action result timeout for detection %u",
           td_det.detection_id);
-        ++idx;
         continue;
       }
 
-      const auto res = future.get();
+      const auto wrapped_result = result_future.get();
+      const auto & res = wrapped_result.result;
 
       WM_LOG(
         get_logger(),
-        "Registration response: success=%d, fitness=%.4f, rmse=%.4f",
+        "Action result: success=%d fitness=%.3f rmse=%.3f",
         res->success,
         res->fitness,
         res->rmse);
 
-      // ------------------------------------------------------------
-      // Quality gating
-      // ------------------------------------------------------------
-      if (!res->success) {
-        WM_LOG(
-          get_logger(),
-          "Rejected detection %u: registration failed",
-          td_det.detection_id);
-        ++idx;
+      if (!res->success ||
+        res->fitness < min_fitness_ ||
+        res->rmse > max_rmse_)
+      {
         continue;
       }
 
-      if (res->fitness < min_fitness_) {
-        WM_LOG(
-          get_logger(),
-          "Rejected detection %u: fitness %.3f < %.3f",
-          td_det.detection_id,
-          res->fitness,
-          min_fitness_);
-        ++idx;
-        continue;
-      }
-
-      if (res->rmse > max_rmse_) {
-        WM_LOG(
-          get_logger(),
-          "Rejected detection %u: rmse %.3f > %.3f",
-          td_det.detection_id,
-          res->rmse,
-          max_rmse_);
-        ++idx;
-        continue;
-      }
-
-      // ------------------------------------------------------------
-      // Accepted block
-      // ------------------------------------------------------------
       Block b;
       b.id = "block_" + std::to_string(td_det.detection_id);
       b.pose = res->pose;
@@ -290,16 +280,8 @@ private:
       b.last_seen = tc;
 
       out.blocks.push_back(b);
-
-      WM_LOG(
-        get_logger(),
-        "Accepted block %s (fitness=%.3f, rmse=%.3f)",
-        b.id.c_str(),
-        b.confidence,
-        res->rmse);
-
-      ++idx;
     }
+
 
     WM_LOG(
       get_logger(),
@@ -429,7 +411,8 @@ private:
   // ----------------------------
   rclcpp::Subscription<TrackedDetectionArray>::SharedPtr det_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  rclcpp::Client<RegisterBlock>::SharedPtr reg_client_;
+  rclcpp_action::Client<RegisterBlockAction>::SharedPtr action_client_;
+
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 

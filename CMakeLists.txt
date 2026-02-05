@@ -48,6 +48,7 @@ add_subdirectory(external/pcd_block_estimation)
 # Generate services
 # ------------------------------------------------------------
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/RegisterBlock.action"
   "srv/SegmentAtPoint.srv"
   "srv/RegisterBlock.srv"
   "msg/Block.msg"
