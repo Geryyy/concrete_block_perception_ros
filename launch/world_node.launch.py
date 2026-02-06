@@ -14,7 +14,7 @@ def generate_launch_description():
         ]
     )
 
-    params_file = PathJoinSubstitution(
+    world_model_params = PathJoinSubstitution(
         [
             FindPackageShare("concrete_block_perception"),
             "config",
@@ -31,9 +31,9 @@ def generate_launch_description():
             Node(
                 package="concrete_block_perception",
                 executable="world_model_node",
-                name="block_world_model_node",
+                name="world_model_node",
                 parameters=[
-                    params_file,
+                    world_model_params,
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,

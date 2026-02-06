@@ -303,6 +303,7 @@ private:
   void execute(
     const std::shared_ptr<GoalHandleRegisterBlock> goal_handle)
   {
+    const auto & uuid = goal_handle->get_goal_id();
     const auto goal = goal_handle->get_goal();
     auto result =
       std::make_shared<RegisterBlockAction::Result>();
@@ -323,7 +324,7 @@ private:
         tt_stage.tic();
       };
 
-    LOG(get_logger(), "execute() start");
+    log_goal_info(get_logger(), uuid, "EXEC 'START");
 
     publish_feedback("tf_lookup", 0.1f);
     geometry_msgs::msg::TransformStamped tf_cloud;
@@ -333,9 +334,11 @@ private:
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
-    RCLCPP_INFO(
+
+    log_goal_info(
       get_logger(),
-      "[tf_lookup] stage took %.1f ms",
+      uuid,
+      "TF LOOKUP took %.1f ms",
       tt_stage.toc());
 
 
@@ -343,9 +346,11 @@ private:
     cv::Mat mask = convertMask(*goal);
     publishDebugMask(*goal, mask);
     if (check_cancel(goal_handle, result)) {return;}
-    RCLCPP_INFO(
+
+    log_goal_info(
       get_logger(),
-      "[mask_conversion] stage took %.1f ms",
+      uuid,
+      "MASK CONVERSION took %.1f ms",
       tt_stage.toc());
 
     publish_feedback("cloud_conversion", 0.3f);
@@ -353,12 +358,18 @@ private:
     if (scene->points_.empty()) {
       result->success = false;
       goal_handle->abort(result);
+      log_goal_warn(
+        get_logger(),
+        uuid,
+        "CLOUD empty --> abort");
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
-    RCLCPP_INFO(
+
+    log_goal_info(
       get_logger(),
-      "[cloud_conversion] stage took %.1f ms",
+      uuid,
+      "CLOUD CONVERSION took %.1f ms",
       tt_stage.toc());
 
     publish_feedback("cutout", 0.4f);
@@ -366,19 +377,25 @@ private:
     if (!computeCutout(*scene, mask, cutout)) {
       result->success = false;
       goal_handle->abort(result);
+      log_goal_warn(
+        get_logger(),
+        uuid,
+        "CUTOUT failed --> abort");
       return;
     }
     if (check_cancel(goal_handle, result)) {return;}
-    RCLCPP_INFO(
+    log_goal_info(
       get_logger(),
-      "[cutout] stage took %.1f ms",
+      uuid,
+      "CUTOUT took %.1f ms",
       tt_stage.toc());
 
     publish_feedback("preprocess", 0.5f);
     preprocessCutout(cutout, tf_cloud);
-    RCLCPP_INFO(
+    log_goal_info(
       get_logger(),
-      "[preprocess] stage took %.1f ms",
+      uuid,
+      "PREPROCESS took %.1f ms",
       tt_stage.toc());
 
     publish_feedback("global_registration", 0.7f);
@@ -386,6 +403,10 @@ private:
     if (!runGlobalRegistration(cutout, glob)) {
       result->success = false;
       goal_handle->abort(result);
+      log_goal_warn(
+        get_logger(),
+        uuid,
+        "GLOBAL REGISTRATION failed --> abort");
       return;
     }
 
@@ -399,49 +420,61 @@ private:
     auto transform_ = globalResultToTransform(glob);
     result->pose = to_ros_pose(transform_);
     result->success = true;
-    auto transformation = transform_;
-    int template_index = 0;
+    // auto transformation = transform_;
+    // int template_index = 0;
 
-    RCLCPP_INFO(
+    log_goal_info(
       get_logger(),
-      "[global_registration] stage took %.1f ms",
+      uuid,
+      "GLOBAL REGISTRATION took %.1f ms",
       tt_stage.toc());
 
-    // publish_feedback("local_registration", 0.9f);
-    // LocalRegistrationResult reg;
-    // if (!runLocalRegistration(icp_scene, glob, reg)) {
-    //   result->success = false;
-    //   goal_handle->abort(result);
-    //   return;
-    // }
-    // RCLCPP_INFO(
-    //   get_logger(),
-    //   "[local_registration] stage took %.1f ms",
-    //   tt_stage.toc());
-    // auto transformation = reg.icp.transformations_;
-    // int template_index = reg.template_index;
+    publish_feedback("local_registration", 0.9f);
+    LocalRegistrationResult reg;
+    if (!runLocalRegistration(icp_scene, glob, reg)) {
+      result->success = false;
+      goal_handle->abort(result);
+      log_goal_warn(
+        get_logger(),
+        uuid,
+        "LOCAL REGISTRATION failed --> abort");
+      return;
+    }
+
+    log_goal_info(
+      get_logger(),
+      uuid,
+      "LOCAL REGISTRATION took %.1f ms",
+      tt_stage.toc());
+
+    auto transformation = reg.icp.transformation_;
+    int template_index = reg.template_index;
 
     publish_feedback("visualization", 0.95f);
 
     publishDebugVisualization(*goal, icp_scene, template_index, transformation);
-    RCLCPP_INFO(
+
+    log_goal_info(
       get_logger(),
-      "[visualization] stage took %.1f ms",
+      uuid,
+      "VISUALIZATION took %.1f ms",
       tt_stage.toc());
 
-    // result->pose = to_ros_pose(reg.icp.transformation_);
-    // result->fitness = reg.icp.fitness_;
-    // result->rmse = reg.icp.inlier_rmse_;
-    // result->success = true;
+    result->pose = to_ros_pose(reg.icp.transformation_);
+    result->fitness = reg.icp.fitness_;
+    result->rmse = reg.icp.inlier_rmse_;
+    result->success = true;
 
     goal_handle->succeed(result);
     publish_feedback("done", 1.0f);
 
-    RCLCPP_INFO(
+    log_goal_info(
       get_logger(),
+      uuid,
       "EXEC DONE in %.1f ms | pts=%zu",
       tt_total.total(),
       icp_scene.points_.size());
+
   }
 
   // --------------------------------------------------------

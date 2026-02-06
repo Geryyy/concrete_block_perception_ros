@@ -38,12 +38,20 @@ def generate_launch_description():
         description="Path to rosbag to replay",
     )
 
-    declare_world_model_params = DeclareLaunchArgument(
+    declare_block_detection_tracking_params = DeclareLaunchArgument(
         "block_detection_tracking_params",
         default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
         / "config"
         / "block_detection_tracking.yaml",
         description="YAML parameter file for block detection tracking node",
+    )
+
+    declare_world_model_params = DeclareLaunchArgument(
+        "world_model_params",
+        default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
+        / "config"
+        / "world_model.yaml",
+        description="YAML parameter file for world model node",
     )
 
     # -----------------------
@@ -92,17 +100,17 @@ def generate_launch_description():
     # -----------------------
     # World model (WITH YAML)
     # -----------------------
-    # world_node_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         PathSubstitution(FindPackageShare("concrete_block_perception"))
-    #         / "launch"
-    #         / "world_node.launch.py"
-    #     ),
-    #     launch_arguments={
-    #         "use_sim_time": use_sim_time,
-    #         "params_file": world_model_params,
-    #     }.items(),
-    # )
+    world_node_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathSubstitution(FindPackageShare("concrete_block_perception"))
+            / "launch"
+            / "world_node.launch.py"
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "params_file": world_model_params,
+        }.items(),
+    )
 
     # -----------------------
     # Rosbag play (delayed!)
@@ -130,11 +138,12 @@ def generate_launch_description():
         [
             declare_use_sim_time,
             declare_bag_path,
+            declare_block_detection_tracking_params,
             declare_world_model_params,
             perception_launch,
             rosbag_nodes_launch,
             block_detection_tracker,
-            # world_node_launch,
+            world_node_launch,
             rosbag_play,
         ]
     )

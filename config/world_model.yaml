@@ -1,4 +1,4 @@
-block_world_model_node:
+world_model_node:
   ros__parameters:
 
     # ----------------------------------

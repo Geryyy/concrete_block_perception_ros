@@ -17,7 +17,7 @@ def generate_launch_description():
             Node(
                 package="concrete_block_perception",
                 executable="block_registration_node",
-                name="block_registration_node",
+                name="registration_node",
                 output="screen",
                 parameters=[
                     PathJoinSubstitution(
