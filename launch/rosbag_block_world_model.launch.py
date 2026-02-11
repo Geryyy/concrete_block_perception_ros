@@ -143,7 +143,7 @@ def generate_launch_description():
             perception_launch,
             rosbag_nodes_launch,
             block_detection_tracker,
-            world_node_launch,
+            # world_node_launch,
             rosbag_play,
         ]
     )

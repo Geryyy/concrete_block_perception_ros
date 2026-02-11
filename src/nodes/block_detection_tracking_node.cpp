@@ -6,8 +6,8 @@
 
 #include "concrete_block_perception/msg/tracked_detection.hpp"
 #include "concrete_block_perception/msg/tracked_detection_array.hpp"
-#include "concrete_block_perception/img_utils.hpp"
-#include "concrete_block_perception/detection_association.hpp"
+#include "concrete_block_perception/utils/img_utils.hpp"
+#include "concrete_block_perception/utils/detection_association.hpp"
 
 #include <unordered_map>
 #include <vector>

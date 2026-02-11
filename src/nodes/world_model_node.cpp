@@ -118,6 +118,8 @@ private:
       det_buffer_.push_back(msg);
       return;
     }
+    RCLCPP_INFO(get_logger(), "detection buffer size: %ld", det_buffer_.size());
+
     processFrame(msg, cloud);
   }
 
@@ -128,6 +130,8 @@ private:
     while (cloud_buffer_.size() > max_cloud_buffer_) {
       cloud_buffer_.pop_front();
     }
+
+    RCLCPP_INFO(get_logger(), "cloud buffer size: %ld", cloud_buffer_.size());
 
     for (auto it = det_buffer_.begin(); it != det_buffer_.end(); ) {
       auto cloud = findClosestCloud(rclcpp::Time((*it)->stamp));

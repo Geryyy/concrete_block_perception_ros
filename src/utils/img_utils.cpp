@@ -1,4 +1,4 @@
-#include "concrete_block_perception/img_utils.hpp"
+#include "concrete_block_perception/utils/img_utils.hpp"
 
 cv::Mat extract_mask_roi(
   const cv::Mat & full_mask,
