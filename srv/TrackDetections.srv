@@ -1,0 +1,7 @@
+# Request
+vision_msgs/Detection2DArray detections
+sensor_msgs/Image mask
+
+---
+# Response
+concrete_block_perception/TrackedDetectionArray tracked

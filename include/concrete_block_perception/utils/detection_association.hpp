@@ -6,7 +6,7 @@
 #include <opencv2/opencv.hpp>
 #include <vision_msgs/msg/detection2_d.hpp>
 
-#include "concrete_block_perception/img_utils.hpp"
+#include "concrete_block_perception/utils/img_utils.hpp"
 
 struct AssociationResult
 {

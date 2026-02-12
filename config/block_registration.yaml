@@ -32,8 +32,13 @@ registration_node:
       min_inliers: 100
       # Maximum angle (deg) between plane normal and world Z
       angle_thresh_degree: 30.0
-      # Maximum distance between plane centers for association [m]
-      max_plane_center_dist: 0.5
+      # max distance between plane centers, i.e. segmentation mask off - abort if top plane and ground plane are visible
+      max_plane_center_dist: 0.6
+
+      clustering:
+        support_radius: 0.1
+        min_neighbors: 10
+        erosion_iters: 0
 
     # ------------------------------------------------------------
     # Local registration (ICP)
@@ -41,9 +46,12 @@ registration_node:
     loc_reg:
       # Max correspondence distance for ICP [m]
       icp_dist: 0.04
-      # Template yaw sampling step [deg]
-      yaw_step: 30
 
     debug:
       publish_cutout: true
       publish_mask: false
+
+    # dump goal inputs (mask, cloud) into dump dir for offline processing / development
+    dump:
+      enable: false
+      dir: dump

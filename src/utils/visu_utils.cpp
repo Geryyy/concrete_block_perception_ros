@@ -1,5 +1,5 @@
-#include "concrete_block_perception/block_utils.hpp"
-#include "concrete_block_perception/visu_utils.hpp"
+#include "concrete_block_perception/utils/block_utils.hpp"
+#include "concrete_block_perception/utils/visu_utils.hpp"
 
 std_msgs::msg::ColorRGBA make_color(
   float r, float g, float b, float a)

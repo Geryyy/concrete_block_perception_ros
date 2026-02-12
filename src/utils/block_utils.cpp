@@ -1,5 +1,5 @@
 #include <cmath>
-#include "concrete_block_perception/block_utils.hpp"
+#include "concrete_block_perception/utils/block_utils.hpp"
 
 
 using Block = concrete_block_perception::msg::Block;
