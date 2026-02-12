@@ -1,4 +1,5 @@
 #include "concrete_block_perception/utils/img_utils.hpp"
+#include <cv_bridge/cv_bridge.h>
 
 cv::Mat extract_mask_roi(
   const cv::Mat & full_mask,
@@ -95,4 +96,81 @@ cv::Rect toCvRect(const vision_msgs::msg::Detection2D & det)
   const int h = static_cast<int>(std::round(det.bbox.size_y));
 
   return cv::Rect(cx - w / 2, cy - h / 2, w, h);
+}
+
+
+cv::Mat toCvBgr(
+  const sensor_msgs::msg::Image & image)
+{
+  return cv_bridge::toCvCopy(image, "bgr8")->image;
+}
+
+cv::Mat toCvMono(
+  const sensor_msgs::msg::Image & image)
+{
+  return cv_bridge::toCvCopy(image, "mono8")->image;
+}
+
+// ==========================================================
+// Mask overlay (vectorized)
+// ==========================================================
+void overlayMask(
+  cv::Mat & image,
+  const cv::Mat & mask,
+  const cv::Scalar & color,
+  double alpha)
+{
+  if (mask.empty()) {return;}
+
+  cv::Mat mask_binary;
+  cv::threshold(mask, mask_binary, 1, 255, cv::THRESH_BINARY);
+
+  cv::Mat colored(image.size(), CV_8UC3, color);
+
+  cv::Mat blended;
+  cv::addWeighted(
+    image, 1.0 - alpha,
+    colored, alpha,
+    0.0, blended);
+
+  blended.copyTo(image, mask_binary);
+}
+
+// ==========================================================
+// Bounding box drawing
+// ==========================================================
+void drawBoundingBox(
+  cv::Mat & image,
+  const vision_msgs::msg::BoundingBox2D & bbox,
+  const cv::Scalar & color,
+  int thickness)
+{
+  int x = bbox.center.position.x - bbox.size_x / 2;
+  int y = bbox.center.position.y - bbox.size_y / 2;
+
+  cv::rectangle(
+    image,
+    cv::Rect(x, y, bbox.size_x, bbox.size_y),
+    color,
+    thickness);
+}
+
+void drawDetectionBoxes(
+  cv::Mat & image,
+  const vision_msgs::msg::Detection2DArray & detections,
+  const cv::Scalar & color)
+{
+  for (const auto & d : detections.detections) {
+    drawBoundingBox(image, d.bbox, color);
+  }
+}
+
+void drawTrackingBoxes(
+  cv::Mat & image,
+  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const cv::Scalar & color)
+{
+  for (const auto & t : tracked.detections) {
+    drawBoundingBox(image, t.detection.bbox, color);
+  }
 }

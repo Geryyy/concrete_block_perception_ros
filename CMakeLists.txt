@@ -30,6 +30,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ros2_yolos_cpp REQUIRED)
 
 # ------------------------------------------------------------
 # External library
@@ -43,6 +44,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/RegisterBlock.action"
   "srv/SegmentAtPoint.srv"
   "srv/RegisterBlock.srv"
+  "srv/TrackDetections.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
   "msg/TrackedDetection.msg"
@@ -74,6 +76,8 @@ add_executable(block_detection_tracking_node
   src/utils/block_utils.cpp
   src/utils/visu_utils.cpp
   src/utils/detection_association.cpp
+  src/detection/block_detection_tracker.cpp
+  src/detection/detection_config.cpp
 )
 
 target_include_directories(block_detection_tracking_node PUBLIC
@@ -139,10 +143,6 @@ add_executable(world_model_node
   src/utils/img_utils.cpp
   src/utils/block_utils.cpp
   src/utils/visu_utils.cpp
-  # src/tracking/damped_cv_kalman_filter.cpp
-  # src/tracking/gating.cpp
-  # src/tracking/hungarian.cpp
-  # src/tracking/multi_object_tracker.cpp
 )
 
 target_include_directories(world_model_node PUBLIC
@@ -169,6 +169,7 @@ ament_target_dependencies(world_model_node
   tf2
   tf2_ros
   tf2_geometry_msgs
+  ros2_yolos_cpp
 )
 
 # ------------------------------------------------------------

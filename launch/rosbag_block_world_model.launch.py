@@ -83,21 +83,6 @@ def generate_launch_description():
     )
 
     # -----------------------
-    # block detection tracking node (WITH YAML)
-    # -----------------------
-    block_detection_tracker = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_perception"))
-            / "launch"
-            / "detection_tracking.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "params_file": block_detection_tracking_params,
-        }.items(),
-    )
-
-    # -----------------------
     # World model (WITH YAML)
     # -----------------------
     world_node_launch = IncludeLaunchDescription(
@@ -142,8 +127,6 @@ def generate_launch_description():
             declare_world_model_params,
             perception_launch,
             rosbag_nodes_launch,
-            block_detection_tracker,
-            # world_node_launch,
             rosbag_play,
         ]
     )

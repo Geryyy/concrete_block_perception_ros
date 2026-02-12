@@ -53,5 +53,5 @@ registration_node:
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
-      enable: true
+      enable: false
       dir: dump

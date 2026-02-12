@@ -14,18 +14,64 @@ from launch import LaunchDescription
 def generate_launch_description():
     pkg_dir = FindPackageShare("concrete_block_perception")
 
-    lifecycle_manager_yaml = os.path.join(
-        get_package_share_directory("concrete_block_perception"),
-        "config",
-        "lifecycle_manager.yaml",
+    # Declare launch arguments
+    model_arg = DeclareLaunchArgument(
+        "model_path",
+        default_value=PathJoinSubstitution(
+            [pkg_dir, "config", "yolo26n_seg_best.onnx"]
+        ),
+        description="Path to YOLO segmentation model",
     )
 
-    yolo_model_path = PathSubstitution(pkg_dir) / "config/yolo26n_seg_best.onnx"
+    labels_arg = DeclareLaunchArgument(
+        "labels_path",
+        default_value=PathJoinSubstitution([pkg_dir, "config", "block.names"]),
+        description="Path to class labels file",
+    )
 
-    yolo_labels_path = PathSubstitution(pkg_dir) / "config/block.names"
+    gpu_arg = DeclareLaunchArgument(
+        "use_gpu",
+        default_value="false",
+        description="Whether to use GPU for inference",
+    )
+
+    block_detection_tracking_params = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "block_detection_tracking.yaml",
+        ]
+    )
+
+    block_registration_params = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "block_registration.yaml",
+        ]
+    )
+
+    calib_yaml = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "calib_zed2i_to_seyond.yaml",
+        ]
+    )
+
+    world_model_params = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_perception"),
+            "config",
+            "world_model.yaml",
+        ]
+    )
 
     return LaunchDescription(
         [
+            model_arg,
+            labels_arg,
+            gpu_arg,
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -51,13 +97,6 @@ def generate_launch_description():
                 }.items(),
             ),
             Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager",
-                output="screen",
-                parameters=[lifecycle_manager_yaml],
-            ),
-            Node(
                 package="image_transport",
                 executable="republish",
                 arguments=[
@@ -71,74 +110,64 @@ def generate_launch_description():
                 ],
                 output="screen",
             ),
-            # Node(
-            #     package="concrete_block_perception",
-            #     executable="detection_node.py",
-            #     parameters=[
-            #         {
-            #             "model_path": PathJoinSubstitution(
-            #                 [
-            #                     FindPackageShare("concrete_block_perception"),
-            #                     "config",
-            #                     "yolo_model.pt",
-            #                 ]
-            #             ),
-            #             "image_topic": "/zed2i/warped/left/image_rect_color/image_raw",
-            #             "confidence": 0.5,
-            #             "imgsz": 1280,
-            #             "device": "0",
-            #             "show_debug_window": True,
-            #         }
-            #     ],
-            #     output="screen",
-            # ),
-            # Node(
-            #     package="concrete_block_perception",
-            #     executable="segmentation_node.py",
-            #     parameters=[
-            #         {
-            #             "model_path": PathJoinSubstitution(
-            #                 [
-            #                     FindPackageShare("concrete_block_perception"),
-            #                     "config",
-            #                     "FastSAM-x.pt",
-            #                 ]
-            #             ),
-            #             "device": "cpu",  # or "cpu"
-            #             "imgsz": 1280,
-            #             "conf": 0.1,
-            #             "iou": 0.9,
-            #             "enable_debug": True,  # overlay image in response
-            #             "select_smallest_mask": True,
-            #         }
-            #     ],
-            #     output="screen",
-            # ),
             IncludeLaunchDescription(
                 PathSubstitution(FindPackageShare("ros2_yolos_cpp"))
                 / "launch"
-                / "segmentor.launch.py",
+                / "segmentor_service.launch.py",
                 launch_arguments={
-                    "model_path": yolo_model_path,
-                    "labels_path": yolo_labels_path,
-                    "use_gpu": "false",
-                    "image_topic": "/zed2i/warped/left/image_rect_color/image_raw",
-                    "camera_info_topic": "/zed2i/warped/left/camera_info",
+                    "model_path": LaunchConfiguration("model_path"),
+                    "labels_path": LaunchConfiguration("labels_path"),
+                    "use_gpu": LaunchConfiguration("use_gpu"),
                 }.items(),
             ),
-            # Node(
-            #     package="concrete_block_perception",
-            #     executable="world_model_node",
-            #     name="block_world_model_node",
-            #     output="screen",
-            #     parameters=[
-            #         {
-            #             # "calib_yaml": "",  # optional override
-            #             "world_frame": "world",
-            #             "assoc_dist": 0.15,
-            #             "min_points": 30,
-            #         }
-            #     ],
-            # ),
+            Node(
+                package="concrete_block_perception",
+                executable="block_detection_tracking_node",
+                name="block_detection_tracking_node",
+                parameters=[
+                    block_detection_tracking_params,
+                ],
+            ),
+            Node(
+                package="concrete_block_perception",
+                executable="block_registration_node",
+                name="registration_node",
+                output="screen",
+                parameters=[block_registration_params],
+            ),
+            Node(
+                package="concrete_block_perception",
+                executable="world_model_node",
+                name="world_model_node",
+                parameters=[
+                    world_model_params,
+                    {
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "calib_yaml": calib_yaml,
+                    },
+                ],
+                remappings=[
+                    # =========================
+                    # Inputs
+                    # =========================
+                    # Image input (synced with cloud)
+                    ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
+                    # Point cloud input (10 Hz)
+                    ("points", "/seyond_points"),
+                    # =========================
+                    # Outputs
+                    # =========================
+                    ("block_world_model", "/cbp/block_world_model"),
+                    ("block_world_model_markers", "/cbp/block_world_model_markers"),
+                    # =========================
+                    # Debug topics
+                    # =========================
+                    ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
+                    ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
+                    ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
+                    ("debug/registration_template", "/cbp/debug/registration_template"),
+                ],
+                output="screen",
+            ),
         ]
     )
