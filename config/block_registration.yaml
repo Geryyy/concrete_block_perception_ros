@@ -32,6 +32,8 @@ registration_node:
       min_inliers: 100
       # Maximum angle (deg) between plane normal and world Z
       angle_thresh_degree: 30.0
+      # Maximum distance between plane centers for association [m]
+      max_plane_center_dist: 0.5
 
     # ------------------------------------------------------------
     # Local registration (ICP)

@@ -49,12 +49,13 @@ struct GlobalRegistrationParams
   double dist_thresh;
   int min_inliers;
   double angle_thresh;
+  double max_plane_center_dist;
 };
 
 struct LocalRegistrationParams
 {
   double icp_dist;
-  int yaw_step;
+  // int yaw_step;
 };
 
 class BlockRegistrationNode : public rclcpp::Node
@@ -100,9 +101,10 @@ public:
     declare_parameter<double>("glob_reg.dist_thresh", 0.02);
     declare_parameter<int>("glob_reg.min_inliers", 100);
     declare_parameter<double>("glob_reg.angle_thresh_degree", 30.0);
+    declare_parameter<double>("glob_reg.max_plane_center_dist", 0.6);
 
     declare_parameter<double>("loc_reg.icp_dist", 0.04);
-    declare_parameter<int>("loc_reg.yaw_step", 30);
+    // declare_parameter<int>("loc_reg.yaw_step", 30);
 
     auto calib_yaml_name = get_parameter("calib_yaml").as_string();
     calib_yaml_ = config_dir + "/" + calib_yaml_name;
@@ -124,9 +126,11 @@ public:
     glob_reg_params_.angle_thresh = std::cos(angle_thresh_deg * M_PI / 180.0);
     glob_reg_params_.dist_thresh = get_parameter("glob_reg.dist_thresh").as_double();
     glob_reg_params_.min_inliers = get_parameter("glob_reg.min_inliers").as_int();
+    glob_reg_params_.max_plane_center_dist =
+      get_parameter("glob_reg.max_plane_center_dist").as_double();
 
     loc_reg_params_.icp_dist = get_parameter("loc_reg.icp_dist").as_double();
-    loc_reg_params_.yaw_step = get_parameter("loc_reg.yaw_step").as_int();
+    // loc_reg_params_.yaw_step = get_parameter("loc_reg.yaw_step").as_int();
 
     if (calib_yaml_.empty()) {
       throw std::runtime_error(
@@ -605,7 +609,8 @@ private:
       glob_reg_params_.angle_thresh,
       glob_reg_params_.MAX_PLANES,
       glob_reg_params_.dist_thresh,
-      glob_reg_params_.min_inliers);
+      glob_reg_params_.min_inliers,
+      glob_reg_params_.max_plane_center_dist);
 
     return out.success;
   }
@@ -619,8 +624,8 @@ private:
       cutout,
       templates_,
       glob,
-      loc_reg_params_.icp_dist,
-      loc_reg_params_.yaw_step);
+      loc_reg_params_.icp_dist);
+    // loc_reg_params_.yaw_step);
 
     return out.success;
   }
