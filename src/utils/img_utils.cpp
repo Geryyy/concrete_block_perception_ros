@@ -120,10 +120,14 @@ void overlayMask(
   const cv::Scalar & color,
   double alpha)
 {
-  if (mask.empty()) {return;}
+  if (mask.empty()) {
+    return;
+  }
 
   cv::Mat mask_binary;
-  cv::threshold(mask, mask_binary, 1, 255, cv::THRESH_BINARY);
+  cv::Mat mask_8u;
+  mask.convertTo(mask_8u, CV_8U, 255.0);
+  cv::threshold(mask_8u, mask_binary, 127, 255, cv::THRESH_BINARY);
 
   cv::Mat colored(image.size(), CV_8UC3, color);
 

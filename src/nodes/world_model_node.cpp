@@ -335,7 +335,7 @@ private:
 
       if (!t.mask.data.empty()) {
         cv::Mat mask = toCvMono(t.mask);
-        overlayMask(img, mask, cv::Scalar(255, 255, 0), 0.75); // light blue
+        overlayMask(img, mask, cv::Scalar(255, 255, 0), 0.35); // light blue
       } else {
         RCLCPP_WARN(
           get_logger(), "No mask provided for tracking overlay (detection %u)", t.detection_id);

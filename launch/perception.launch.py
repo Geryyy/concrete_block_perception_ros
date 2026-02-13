@@ -84,18 +84,19 @@ def generate_launch_description():
                     }
                 ],
             ),
-            IncludeLaunchDescription(
-                PathSubstitution(FindPackageShare("foxglove_bridge"))
-                / "launch"
-                / "foxglove_bridge_launch.xml",
-                launch_arguments={
-                    "port": "8765",
-                    "best_effort_qos_topic_whitelist": (
-                        "^/(seyond_points.*|zed2i/.*/image.*|"
-                        "yolos_segmentor/(debug_image|mask).*)"
-                    ),
-                }.items(),
-            ),
+            # IncludeLaunchDescription(
+            #     PathSubstitution(FindPackageShare("foxglove_bridge"))
+            #     / "launch"
+            #     / "foxglove_bridge_launch.xml",
+            #     launch_arguments={
+            #         "port": "8765",
+            #         "log_level": "warn",
+            #         "best_effort_qos_topic_whitelist": (
+            #             "^/(seyond_points.*|zed2i/.*/image.*|"
+            #             "yolos_segmentor/(debug_image|mask).*)"
+            #         ),
+            #     }.items(),
+            # ),
             Node(
                 package="image_transport",
                 executable="republish",
@@ -127,13 +128,16 @@ def generate_launch_description():
                 parameters=[
                     block_detection_tracking_params,
                 ],
+                output="screen",
+                emulate_tty=True,
             ),
             Node(
                 package="concrete_block_perception",
                 executable="block_registration_node",
                 name="registration_node",
-                output="screen",
                 parameters=[block_registration_params],
+                output="screen",
+                emulate_tty=True,
             ),
             Node(
                 package="concrete_block_perception",
@@ -146,6 +150,8 @@ def generate_launch_description():
                         "calib_yaml": calib_yaml,
                     },
                 ],
+                output="screen",
+                emulate_tty=True,
                 remappings=[
                     # =========================
                     # Inputs
@@ -167,7 +173,6 @@ def generate_launch_description():
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
                 ],
-                output="screen",
             ),
         ]
     )
