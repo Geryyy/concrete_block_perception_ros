@@ -22,7 +22,8 @@
 
 #include "pcd_block_estimation/utils.hpp"
 
-using namespace concrete_block_perception;
+namespace concrete_block_perception
+{
 
 class BlockRegistrationNode : public rclcpp::Node
 {
@@ -33,8 +34,9 @@ class BlockRegistrationNode : public rclcpp::Node
     rclcpp_action::ServerGoalHandle<RegisterBlockAction>;
 
 public:
-  BlockRegistrationNode()
-  : Node("block_registration_node")
+  explicit BlockRegistrationNode(
+    const rclcpp::NodeOptions & options)
+  : Node("block_registration_node", options)
   {
     config_ = load_registration_config(*this);
 
@@ -50,11 +52,15 @@ public:
     debug_ =
       std::make_unique<RosDebugHelpers>(*this, config_);
 
-    tf_buffer_ =
-      std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
 
-    tf_listener_ =
-      std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_buffer_->setUsingDedicatedThread(true);
+
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(
+      *tf_buffer_,
+      this,
+      false // do not spin thread automatically
+    );
 
     // Reentrant callback group for multithreading
     action_cb_group_ =
@@ -83,7 +89,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "Block registration node ready");
+      "Block registration node ready (component)");
   }
 
 private:
@@ -283,20 +289,10 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
+}  // namespace concrete_block_perception
 
-  auto node =
-    std::make_shared<BlockRegistrationNode>();
+#include "rclcpp_components/register_node_macro.hpp"
 
-  rclcpp::executors::MultiThreadedExecutor exec(
-    rclcpp::ExecutorOptions(),
-    std::thread::hardware_concurrency());
-
-  exec.add_node(node);
-  exec.spin();
-
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  concrete_block_perception::BlockRegistrationNode
+)

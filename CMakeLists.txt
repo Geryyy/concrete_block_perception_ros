@@ -31,6 +31,8 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ros2_yolos_cpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+
 
 # ------------------------------------------------------------
 # External library
@@ -69,7 +71,8 @@ ament_export_dependencies(rosidl_default_runtime)
 # ============================================================
 # BLOCK DETECTION TRACKING NODE
 # ============================================================
-add_executable(block_detection_tracking_node
+
+add_library(block_detection_tracking_component SHARED
   src/nodes/block_detection_tracking_node.cpp
   src/utils/io_utils.cpp
   src/utils/img_utils.cpp
@@ -80,28 +83,34 @@ add_executable(block_detection_tracking_node
   src/detection/detection_config.cpp
 )
 
-target_include_directories(block_detection_tracking_node PUBLIC
+target_include_directories(block_detection_tracking_component PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(block_detection_tracking_node
+target_link_libraries(block_detection_tracking_component
   pcd_block_estimation
   ${cpp_typesupport_target}
 )
 
-ament_target_dependencies(block_detection_tracking_node
+ament_target_dependencies(block_detection_tracking_component
   rclcpp
+  rclcpp_components
   sensor_msgs
   geometry_msgs
   vision_msgs
   cv_bridge
 )
 
+rclcpp_components_register_nodes(block_detection_tracking_component
+  "concrete_block_perception::BlockDetectionTrackingNode"
+)
+
+
 # ============================================================
 # BLOCK REGISTRATION NODE (UPDATED)
 # ============================================================
-add_executable(block_registration_node
+add_library(block_registration_component SHARED
   src/nodes/block_registration_node.cpp
   src/registration/block_registration_pipeline.cpp
   src/registration/registration_config.cpp
@@ -109,20 +118,21 @@ add_executable(block_registration_node
   src/utils/io_utils.cpp
 )
 
-target_include_directories(block_registration_node PUBLIC
+target_include_directories(block_registration_component PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(block_registration_node
+target_link_libraries(block_registration_component
   pcd_block_estimation
   ${cpp_typesupport_target}
   Open3D::Open3D
   ${OpenCV_LIBS}
 )
 
-ament_target_dependencies(block_registration_node
+ament_target_dependencies(block_registration_component
   rclcpp
+  rclcpp_components
   rclcpp_action
   sensor_msgs
   geometry_msgs
@@ -134,10 +144,16 @@ ament_target_dependencies(block_registration_node
   tf2_geometry_msgs
 )
 
+rclcpp_components_register_nodes(block_registration_component
+  "concrete_block_perception::BlockRegistrationNode"
+)
+
+
 # ============================================================
-# WORLD MODEL NODE
+# WORLD MODEL COMPONENT
 # ============================================================
-add_executable(world_model_node
+
+add_library(world_model_component SHARED
   src/nodes/world_model_node.cpp
   src/utils/io_utils.cpp
   src/utils/img_utils.cpp
@@ -145,20 +161,22 @@ add_executable(world_model_node
   src/utils/visu_utils.cpp
 )
 
-target_include_directories(world_model_node PUBLIC
+target_include_directories(world_model_component PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(world_model_node
+target_link_libraries(world_model_component
   pcd_block_estimation
   ${cpp_typesupport_target}
   Open3D::Open3D
   ${OpenCV_LIBS}
 )
 
-ament_target_dependencies(world_model_node
+ament_target_dependencies(world_model_component
   rclcpp
+  rclcpp_components
+  rclcpp_action
   std_msgs
   sensor_msgs
   geometry_msgs
@@ -172,15 +190,24 @@ ament_target_dependencies(world_model_node
   ros2_yolos_cpp
 )
 
+rclcpp_components_register_nodes(world_model_component
+  "concrete_block_perception::WorldModelNode"
+)
+
+
 # ------------------------------------------------------------
 # Install
 # ------------------------------------------------------------
 install(TARGETS
-  block_detection_tracking_node
-  block_registration_node
-  world_model_node
-  DESTINATION lib/${PROJECT_NAME}
+  block_detection_tracking_component
+  block_registration_component
+  world_model_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib
 )
+
+
 
 install(PROGRAMS
   scripts/detection_node.py

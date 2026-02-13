@@ -29,6 +29,9 @@
 
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
 
+namespace concrete_block_perception
+{
+
 using concrete_block_perception::msg::Block;
 using concrete_block_perception::msg::BlockArray;
 
@@ -53,8 +56,9 @@ class WorldModelNode : public rclcpp::Node
   };
 
 public:
-  WorldModelNode()
-  : Node("block_world_model_node")
+  explicit WorldModelNode(
+    const rclcpp::NodeOptions & options)
+  : Node("block_world_model_node", options)
   {
     // ================================
     // Parameters
@@ -93,8 +97,12 @@ public:
     // ================================
     // Sync image + cloud
     // ================================
-    image_sub_.subscribe(this, "image");
-    cloud_sub_.subscribe(this, "points");
+    rclcpp::QoS qos(10);
+    qos.best_effort();
+    qos.durability_volatile();
+
+    image_sub_.subscribe(this, "image", qos.get_rmw_qos_profile());
+    cloud_sub_.subscribe(this, "points", qos.get_rmw_qos_profile());
 
     sync_ =
       std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
@@ -125,7 +133,11 @@ public:
       rclcpp_action::create_client<RegisterBlock>(
       this, "register_block");
 
-    action_client_->wait_for_action_server();
+    if (!action_client_->wait_for_action_server(std::chrono::seconds(2))) {
+      RCLCPP_WARN(
+        get_logger(),
+        "RegisterBlock action server not available at startup.");
+    }
 
     WM_LOG(get_logger(), "WorldModelNode ready");
   }
@@ -138,118 +150,202 @@ private:
     const sensor_msgs::msg::Image::ConstSharedPtr image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
   {
-    if (busy_) {
-      // RCLCPP_INFO(get_logger(), "Dropping frame (busy)");
+    uint64_t frame_id = ++frame_counter_;
+    RCLCPP_INFO(get_logger(), "Processing frame %lu", frame_id);
+
+    if (!segment_client_->service_is_ready()) {
+      RCLCPP_WARN(get_logger(), "Segmentation service not ready.");
       return;
     }
 
-    busy_ = true;
+    auto seg_req = std::make_shared<SegmentSrv::Request>();
+    seg_req->image = *image;
+    seg_req->return_debug = false;
 
-    std::thread(
-      [this, image, cloud]() {
-        processFrame(image, cloud);
-        busy_ = false;
-      }).detach();
+    segment_client_->async_send_request(
+      seg_req,
+      [this, image, cloud, frame_id](rclcpp::Client<SegmentSrv>::SharedFuture future)
+      {
+        handleSegmentation(image, cloud, future.get(), frame_id);
+      });
   }
+
+  void handleSegmentation(
+    const sensor_msgs::msg::Image::ConstSharedPtr image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud,
+    const SegmentSrv::Response::SharedPtr seg_res,
+    uint64_t frame_id)
+  {
+    if (!seg_res->success) {
+      RCLCPP_WARN(get_logger(), "Segmentation failed.");
+      return;
+    }
+
+    publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
+
+    if (!track_client_->service_is_ready()) {
+      RCLCPP_WARN(get_logger(), "Tracking service not ready.");
+      return;
+    }
+
+    auto track_req = std::make_shared<TrackSrv::Request>();
+    track_req->detections = seg_res->detections;
+    track_req->mask = seg_res->mask;
+
+    track_client_->async_send_request(
+      track_req,
+      [this, image, cloud, frame_id](rclcpp::Client<TrackSrv>::SharedFuture future)
+      {
+        handleTracking(image, cloud, future.get(), frame_id);
+      });
+  }
+
+
+  void handleTracking(
+    const sensor_msgs::msg::Image::ConstSharedPtr image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud,
+    const TrackSrv::Response::SharedPtr track_res,
+    uint64_t frame_id)
+  {
+    publishTrackingOverlay(image, track_res->tracked);
+
+    if (track_res->tracked.detections.empty()) {
+      publishEmpty(cloud->header);
+      return;
+    }
+
+    auto ctx = std::make_shared<FrameContext>();
+    ctx->header = cloud->header;
+    ctx->pending.store(track_res->tracked.detections.size());
+
+    {
+      std::lock_guard<std::mutex> lock(frames_mutex_);
+      frames_[frame_id] = ctx;
+    }
+
+    for (const auto & det : track_res->tracked.detections) {
+      RegisterBlock::Goal goal;
+      goal.mask = det.mask;
+      goal.cloud = *cloud;
+      goal.object_class = object_class_;
+
+      auto options =
+        rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
+
+      options.result_callback =
+        [this, frame_id, det](const auto & result)
+        {
+          handleResult(frame_id, det, result);
+        };
+
+      // action_client_->async_send_goal(goal, options);
+      if (!action_client_->action_server_is_ready()) {
+        RCLCPP_WARN(get_logger(), "RegisterBlock action server not ready.");
+        return;
+      }
+
+    }
+  }
+
 
   // ==========================================================
   // Pipeline
   // ==========================================================
-  void processFrame(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
-  {
-    try {
+  // void processFrame(
+  //   const sensor_msgs::msg::Image::ConstSharedPtr & image,
+  //   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
+  // {
+  //   try {
 
-      // ==========================
-      // 1️⃣ Segmentation
-      // ==========================
-      RCLCPP_INFO(get_logger(), "Processing frame %lu", frame_counter_ + 1);
+  //     // ==========================
+  //     // 1️⃣ Segmentation
+  //     // ==========================
+  //     RCLCPP_INFO(get_logger(), "Processing frame %lu", frame_counter_ + 1);
 
-      RCLCPP_INFO(get_logger(), "Requesting segmentation...");
-      auto seg_req =
-        std::make_shared<SegmentSrv::Request>();
-      seg_req->image = *image;
-      seg_req->return_debug = false;
+  //     RCLCPP_INFO(get_logger(), "Requesting segmentation...");
+  //     auto seg_req =
+  //       std::make_shared<SegmentSrv::Request>();
+  //     seg_req->image = *image;
+  //     seg_req->return_debug = false;
 
-      auto seg_res =
-        segment_client_->async_send_request(seg_req).get();
+  //     auto seg_res =
+  //       segment_client_->async_send_request(seg_req).get();
 
-      if (!seg_res->success) {return;}
+  //     if (!seg_res->success) {return;}
 
-      publishDetectionOverlay(
-        image, seg_res->detections, seg_res->mask);
+  //     publishDetectionOverlay(
+  //       image, seg_res->detections, seg_res->mask);
 
-      // ==========================
-      // 2️⃣ Tracking
-      // ==========================
-      RCLCPP_INFO(get_logger(), "Requesting tracking...");
-      auto track_req =
-        std::make_shared<TrackSrv::Request>();
+  //     // ==========================
+  //     // 2️⃣ Tracking
+  //     // ==========================
+  //     RCLCPP_INFO(get_logger(), "Requesting tracking...");
+  //     auto track_req =
+  //       std::make_shared<TrackSrv::Request>();
 
-      track_req->detections = seg_res->detections;
-      track_req->mask = seg_res->mask;
+  //     track_req->detections = seg_res->detections;
+  //     track_req->mask = seg_res->mask;
 
-      auto track_res =
-        track_client_->async_send_request(track_req).get();
+  //     auto track_res =
+  //       track_client_->async_send_request(track_req).get();
 
-      publishTrackingOverlay(
-        image, track_res->tracked);
+  //     publishTrackingOverlay(
+  //       image, track_res->tracked);
 
-      if (track_res->tracked.detections.empty()) {
-        publishEmpty(cloud->header);
-        return;
-      }
+  //     if (track_res->tracked.detections.empty()) {
+  //       publishEmpty(cloud->header);
+  //       return;
+  //     }
 
-      // ==========================
-      // 3️⃣ Registration
-      // ==========================
-      RCLCPP_INFO(
-        get_logger(), "Requesting registration for %zu detections...",
-        track_res->tracked.detections.size());
-      auto ctx = std::make_shared<FrameContext>();
-      ctx->header = cloud->header;
-      ctx->pending.store(
-        track_res->tracked.detections.size());
+  //     // ==========================
+  //     // 3️⃣ Registration
+  //     // ==========================
+  //     RCLCPP_INFO(
+  //       get_logger(), "Requesting registration for %zu detections...",
+  //       track_res->tracked.detections.size());
+  //     auto ctx = std::make_shared<FrameContext>();
+  //     ctx->header = cloud->header;
+  //     ctx->pending.store(
+  //       track_res->tracked.detections.size());
 
-      uint64_t frame_id = ++frame_counter_;
+  //     uint64_t frame_id = ++frame_counter_;
 
-      {
-        std::lock_guard<std::mutex> lock(frames_mutex_);
-        frames_[frame_id] = ctx;
-      }
+  //     {
+  //       std::lock_guard<std::mutex> lock(frames_mutex_);
+  //       frames_[frame_id] = ctx;
+  //     }
 
-      for (const auto & det :
-        track_res->tracked.detections)
-      {
-        RCLCPP_INFO(
-          get_logger(), "Requesting registration for detection %u (confidence: %.2f)...",
-          det.detection_id, det.detection.results[0].hypothesis.score);
+  //     for (const auto & det :
+  //       track_res->tracked.detections)
+  //     {
+  //       RCLCPP_INFO(
+  //         get_logger(), "Requesting registration for detection %u (confidence: %.2f)...",
+  //         det.detection_id, det.detection.results[0].hypothesis.score);
 
-        RegisterBlock::Goal goal;
-        goal.mask = det.mask;
-        goal.cloud = *cloud;
-        goal.object_class = object_class_;
+  //       RegisterBlock::Goal goal;
+  //       goal.mask = det.mask;
+  //       goal.cloud = *cloud;
+  //       goal.object_class = object_class_;
 
-        auto options =
-          rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
+  //       auto options =
+  //         rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
 
-        options.result_callback =
-          [this, frame_id, det](
-          const auto & result)
-          {
-            handleResult(frame_id, det, result);
-          };
+  //       options.result_callback =
+  //         [this, frame_id, det](
+  //         const auto & result)
+  //         {
+  //           handleResult(frame_id, det, result);
+  //         };
 
-        action_client_->async_send_goal(goal, options);
-      }
+  //       action_client_->async_send_goal(goal, options);
+  //     }
 
-    } catch (const std::exception & e) {
-      RCLCPP_ERROR(
-        get_logger(),
-        "Pipeline error: %s", e.what());
-    }
-  }
+  //   } catch (const std::exception & e) {
+  //     RCLCPP_ERROR(
+  //       get_logger(),
+  //       "Pipeline error: %s", e.what());
+  //   }
+  // }
 
   // ==========================================================
   // Registration Result
@@ -394,26 +490,15 @@ private:
   std::unordered_map<uint64_t, std::shared_ptr<FrameContext>> frames_;
   std::mutex frames_mutex_;
   std::atomic<uint64_t> frame_counter_{0};
-  std::atomic<bool> busy_{false};
 
   double min_fitness_;
   double max_rmse_;
   std::string object_class_;
 };
+}  // namespace concrete_block_perception
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
+#include "rclcpp_components/register_node_macro.hpp"
 
-  auto node =
-    std::make_shared<WorldModelNode>();
-
-  rclcpp::executors::MultiThreadedExecutor exec(
-    rclcpp::ExecutorOptions(), 4);
-
-  exec.add_node(node);
-  exec.spin();
-
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  concrete_block_perception::WorldModelNode
+)

@@ -18,11 +18,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     bag_path = LaunchConfiguration("bag")
-    world_model_params = LaunchConfiguration("world_model_params")
-    block_detection_tracking_params = LaunchConfiguration(
-        "block_detection_tracking_params"
-    )
-
     # -----------------------
     # Launch arguments
     # -----------------------
@@ -36,22 +31,6 @@ def generate_launch_description():
         "bag",
         default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
         description="Path to rosbag to replay",
-    )
-
-    declare_block_detection_tracking_params = DeclareLaunchArgument(
-        "block_detection_tracking_params",
-        default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
-        / "config"
-        / "block_detection_tracking.yaml",
-        description="YAML parameter file for block detection tracking node",
-    )
-
-    declare_world_model_params = DeclareLaunchArgument(
-        "world_model_params",
-        default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
-        / "config"
-        / "world_model.yaml",
-        description="YAML parameter file for world model node",
     )
 
     # -----------------------
@@ -83,21 +62,6 @@ def generate_launch_description():
     )
 
     # -----------------------
-    # World model (WITH YAML)
-    # -----------------------
-    world_node_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_perception"))
-            / "launch"
-            / "world_node.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "params_file": world_model_params,
-        }.items(),
-    )
-
-    # -----------------------
     # Rosbag play (delayed!)
     # -----------------------
     rosbag_play = TimerAction(
@@ -123,8 +87,6 @@ def generate_launch_description():
         [
             declare_use_sim_time,
             declare_bag_path,
-            declare_block_detection_tracking_params,
-            declare_world_model_params,
             perception_launch,
             rosbag_nodes_launch,
             rosbag_play,

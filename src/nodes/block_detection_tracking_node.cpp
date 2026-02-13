@@ -11,11 +11,14 @@ using concrete_block_perception::srv::TrackDetections;
 using concrete_block_perception::BlockDetectionTracker;
 using concrete_block_perception::DetectionConfig;
 
-class BlockDetectionTrackingServiceNode : public rclcpp::Node
+namespace concrete_block_perception
+{
+class BlockDetectionTrackingNode : public rclcpp::Node
 {
 public:
-  BlockDetectionTrackingServiceNode()
-  : Node("block_detection_tracking_service_node")
+  explicit BlockDetectionTrackingNode(
+    const rclcpp::NodeOptions & options)
+  : Node("block_detection_tracking_node", options)
   {
     // =========================================
     // Load parameters via DetectionConfig
@@ -38,7 +41,7 @@ public:
     service_ = create_service<TrackDetections>(
       "~/track",
       std::bind(
-        &BlockDetectionTrackingServiceNode::handleRequest,
+        &BlockDetectionTrackingNode::handleRequest,
         this,
         std::placeholders::_1,
         std::placeholders::_2),
@@ -47,7 +50,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "BlockDetectionTrackingServiceNode ready.");
+      "BlockDetectionTrackingNode ready.");
   }
 
 private:
@@ -107,19 +110,10 @@ private:
   rclcpp::CallbackGroup::SharedPtr callback_group_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
+} // namespace concrete_block_perception
 
-  auto node =
-    std::make_shared<BlockDetectionTrackingServiceNode>();
+#include "rclcpp_components/register_node_macro.hpp"
 
-  rclcpp::executors::MultiThreadedExecutor exec(
-    rclcpp::ExecutorOptions(), 2);
-
-  exec.add_node(node);
-  exec.spin();
-
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  concrete_block_perception::BlockDetectionTrackingNode
+)
