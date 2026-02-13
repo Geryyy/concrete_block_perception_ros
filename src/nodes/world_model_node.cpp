@@ -5,6 +5,7 @@
 #include <thread>
 #include <sstream>
 #include <iomanip>
+#include <chrono>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -50,6 +51,12 @@ class WorldModelNode : public rclcpp::Node
     std_msgs::msg::Header header;
     std::vector<Block> blocks;
     std::atomic<size_t> pending{0};
+
+    // ---- timing ----
+    std::chrono::steady_clock::time_point t_start;
+    std::chrono::steady_clock::time_point t_after_seg;
+    std::chrono::steady_clock::time_point t_after_track;
+    std::chrono::steady_clock::time_point t_after_reg;
   };
 
 public:
@@ -160,7 +167,7 @@ private:
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
   {
     try {
-
+      auto t_start = std::chrono::steady_clock::now();
       // ==========================
       // 1️⃣ Segmentation
       // ==========================
@@ -174,6 +181,8 @@ private:
 
       auto seg_res =
         segment_client_->async_send_request(seg_req).get();
+
+      auto t_after_seg = std::chrono::steady_clock::now();
 
       if (!seg_res->success) {return;}
 
@@ -193,6 +202,8 @@ private:
       auto track_res =
         track_client_->async_send_request(track_req).get();
 
+      auto t_after_track = std::chrono::steady_clock::now();
+
       publishTrackingOverlay(
         image, track_res->tracked);
 
@@ -208,6 +219,10 @@ private:
         get_logger(), "Requesting registration for %zu detections...",
         track_res->tracked.detections.size());
       auto ctx = std::make_shared<FrameContext>();
+      ctx->t_start = t_start;
+      ctx->t_after_seg = t_after_seg;
+      ctx->t_after_track = t_after_track;
+
       ctx->header = cloud->header;
       ctx->pending.store(
         track_res->tracked.detections.size());
@@ -292,9 +307,34 @@ private:
     }
 
     if (ctx->pending.fetch_sub(1) == 1) {
+
+      ctx->t_after_reg = std::chrono::steady_clock::now();
+
+      auto seg_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+        ctx->t_after_seg - ctx->t_start).count();
+
+      auto track_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+        ctx->t_after_track - ctx->t_after_seg).count();
+
+      auto reg_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+        ctx->t_after_reg - ctx->t_after_track).count();
+
+      auto total_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+        ctx->t_after_reg - ctx->t_start).count();
+
+      RCLCPP_WARN(
+        get_logger(),
+        "Frame timing | seg: %ld ms | track: %ld ms | reg: %ld ms | total: %ld ms",
+        seg_ms, track_ms, reg_ms, total_ms);
+
       publishFrame(*ctx);
       frames_.erase(it);
     }
+
   }
 
   // ==========================================================
