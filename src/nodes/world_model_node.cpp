@@ -384,6 +384,8 @@ private:
 
     drawTrackingBoxes(img, tracked, cv::Scalar(0, 0, 255)); // red
 
+    drawCircle(img, tracked, cv::Scalar(255, 0, 255), 2, cv::LINE_AA); // magenta circle
+
     auto out =
       cv_bridge::CvImage(
       image->header,

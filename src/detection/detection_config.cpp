@@ -36,6 +36,10 @@ DetectionConfig::DetectionConfig(rclcpp::Node & node)
   params_.publish_debug_image =
     node.declare_parameter<bool>(
     "detection.publish_debug_image", true);
+
+  params_.bypass_tracking =
+    node.declare_parameter<bool>(
+    "detection.bypass_tracking", false);
 }
 
 }  // namespace concrete_block_perception

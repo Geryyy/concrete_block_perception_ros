@@ -49,3 +49,10 @@ void drawTrackingBoxes(
   cv::Mat & image,
   const concrete_block_perception::msg::TrackedDetectionArray & tracked,
   const cv::Scalar & color);
+
+void drawCircle(
+  cv::Mat & image,
+  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const cv::Scalar & color,
+  int thickness,
+  int line_type);

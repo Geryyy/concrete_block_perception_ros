@@ -14,5 +14,7 @@ uint32 age
 # Number of consecutive frames this detection was missing
 uint32 misses
 
+float32 suppression_radius
+
 # Timestamp of last update
 builtin_interfaces/Time stamp

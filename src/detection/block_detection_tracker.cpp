@@ -23,13 +23,13 @@ void BlockDetectionTracker::reset()
 
 msg::TrackedDetectionArray BlockDetectionTracker::update(
   const vision_msgs::msg::Detection2DArray & msg,
-  const sensor_msgs::msg::Image::SharedPtr & mask_msg)
+  const sensor_msgs::msg::Image::ConstSharedPtr & mask_msg)
 {
   const rclcpp::Time now = msg.header.stamp;
 
-  // -----------------------------
+  // -------------------------------------------------
   // 1. Pre-filter detections
-  // -----------------------------
+  // -------------------------------------------------
   std::vector<size_t> valid_indices;
   valid_indices.reserve(msg.detections.size());
 
@@ -42,20 +42,75 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     valid_indices.push_back(i);
   }
 
-  // -----------------------------
-  // 2. Prepare mask
-  // -----------------------------
+  // -------------------------------------------------
+  // 1.1 BYPASS MODE (no tracking, direct forward)
+  // -------------------------------------------------
+  if (params_.bypass_tracking) {
+    msg::TrackedDetectionArray out;
+    out.stamp = now;
+
+    // Zero-copy mask access (same as normal path)
+    cv::Mat full_mask;
+    if (mask_msg) {
+      auto mask_ptr = cv_bridge::toCvShare(mask_msg, "mono8");
+      full_mask = mask_ptr->image;
+    }
+
+    for (size_t i = 0; i < valid_indices.size(); ++i) {
+      const auto & det = msg.detections[valid_indices[i]];
+
+      msg::TrackedDetection td;
+
+      // You can choose:
+      // td.detection_id = -1;
+      // OR give sequential id for debugging:
+      td.detection_id = next_detection_id_++;
+
+      td.detection = det;
+      td.age = 1;
+      td.misses = 0;
+      td.stamp = now;
+      td.suppression_radius = 0.0;
+
+      // ---- Extract mask ROI ----
+      if (!full_mask.empty()) {
+        cv::Mat det_mask =
+          extract_mask_roi(full_mask, det);
+
+        auto mask_msg_out =
+          cv_bridge::CvImage(
+          std_msgs::msg::Header(),
+          "mono8",
+          det_mask).toImageMsg();
+
+        mask_msg_out->header.stamp = now;
+        mask_msg_out->header.frame_id =
+          det.header.frame_id;
+
+        td.mask = *mask_msg_out;
+      }
+
+      out.detections.push_back(std::move(td));
+    }
+
+    tracks_.clear();  // Clear any existing tracks since we're bypassing
+    return out;
+  }
+
+  // -------------------------------------------------
+  // 2. Zero-copy mask access
+  // -------------------------------------------------
   cv::Mat full_mask;
   if (mask_msg) {
-    full_mask =
-      cv_bridge::toCvCopy(*mask_msg, "mono8")->image;
+    auto mask_ptr = cv_bridge::toCvShare(mask_msg, "mono8");
+    full_mask = mask_ptr->image;
   }
 
   std::vector<bool> detection_used(valid_indices.size(), false);
 
-  // -----------------------------
+  // -------------------------------------------------
   // 3. Associate detections
-  // -----------------------------
+  // -------------------------------------------------
   for (auto & kv : tracks_) {
     auto & track = kv.second;
 
@@ -78,23 +133,6 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     track.detection = msg.detections[det_idx];
     track.detection.header.stamp = now;
 
-    if (!full_mask.empty()) {
-      cv::Mat det_mask =
-        extract_mask_roi(full_mask, track.detection);
-
-      auto mask_msg_out =
-        cv_bridge::CvImage(
-        std_msgs::msg::Header(),
-        "mono8",
-        det_mask).toImageMsg();
-
-      mask_msg_out->header.stamp = now;
-      mask_msg_out->header.frame_id =
-        track.detection.header.frame_id;
-
-      track.mask = *mask_msg_out;
-    }
-
     track.age++;
     track.misses = 0;
     track.last_seen = now;
@@ -102,9 +140,9 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     detection_used[assoc.detection_index] = true;
   }
 
-  // -----------------------------
-  // 4. Create new tracks
-  // -----------------------------
+  // -------------------------------------------------
+  // 4. Create new tracks (NO mask extraction here)
+  // -------------------------------------------------
   for (size_t i = 0; i < valid_indices.size(); ++i) {
 
     if (detection_used[i]) {
@@ -151,29 +189,12 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     track.misses = 0;
     track.last_seen = now;
 
-    if (!full_mask.empty()) {
-      cv::Mat det_mask =
-        extract_mask_roi(full_mask, det);
-
-      auto mask_msg_out =
-        cv_bridge::CvImage(
-        std_msgs::msg::Header(),
-        "mono8",
-        det_mask).toImageMsg();
-
-      mask_msg_out->header.stamp = now;
-      mask_msg_out->header.frame_id =
-        det.header.frame_id;
-
-      track.mask = *mask_msg_out;
-    }
-
-    tracks_[track.detection_id] = track;
+    tracks_[track.detection_id] = std::move(track);
   }
 
-  // -----------------------------
+  // -------------------------------------------------
   // 5. Miss handling
-  // -----------------------------
+  // -------------------------------------------------
   for (auto it = tracks_.begin();
     it != tracks_.end(); )
   {
@@ -190,9 +211,9 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
 
   pruneContainedTracks();
 
-  // -----------------------------
-  // 6. Output
-  // -----------------------------
+  // -------------------------------------------------
+  // 6. Output (mask extraction ONLY here)
+  // -------------------------------------------------
   msg::TrackedDetectionArray out;
   out.stamp = now;
 
@@ -206,12 +227,31 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     msg::TrackedDetection td;
     td.detection_id = track.detection_id;
     td.detection = track.detection;
-    td.mask = track.mask;
     td.age = track.age;
     td.misses = track.misses;
     td.stamp = now;
+    td.suppression_radius = suppressionRadiusPx(track);
 
-    out.detections.push_back(td);
+    // ---- Extract mask ROI ONLY ONCE HERE ----
+    if (!full_mask.empty()) {
+
+      cv::Mat det_mask =
+        extract_mask_roi(full_mask, track.detection);
+
+      auto mask_msg_out =
+        cv_bridge::CvImage(
+        std_msgs::msg::Header(),
+        "mono8",
+        det_mask).toImageMsg();
+
+      mask_msg_out->header.stamp = now;
+      mask_msg_out->header.frame_id =
+        track.detection.header.frame_id;
+
+      td.mask = *mask_msg_out;
+    }
+
+    out.detections.push_back(std::move(td));
   }
 
   return out;

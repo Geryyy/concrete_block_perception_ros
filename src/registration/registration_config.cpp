@@ -50,6 +50,7 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<int>("glob_reg.min_inliers", 100);
   node.declare_parameter<double>("glob_reg.angle_thresh_degree", 30.0);
   node.declare_parameter<double>("glob_reg.max_plane_center_dist", 0.6);
+  node.declare_parameter<bool>("glob_reg.enable_plane_clipping", false);
 
   node.declare_parameter<double>("loc_reg.icp_dist", 0.04);
 
@@ -146,6 +147,10 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.glob.angle_thresh =
     std::cos(angle_deg * M_PI / 180.0);
+
+  bool enable_plane_clipping =
+    node.get_parameter("glob_reg.enable_plane_clipping").as_bool();
+  cfg.glob.enable_plane_clipping = enable_plane_clipping;
 
   // ------------------------------------------------------------
   // Local registration params

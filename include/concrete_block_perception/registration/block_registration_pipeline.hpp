@@ -27,6 +27,7 @@ struct GlobalRegistrationParams
   int min_inliers{100};
   double angle_thresh{0.9};
   double max_plane_center_dist{0.6};
+  bool enable_plane_clipping{false};
 };
 
 struct LocalRegistrationParams

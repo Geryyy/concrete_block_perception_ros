@@ -43,7 +43,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     glob_.MAX_PLANES,
     glob_.dist_thresh,
     glob_.min_inliers,
-    glob_.max_plane_center_dist);
+    glob_.max_plane_center_dist,
+    glob_.enable_plane_clipping);
 
   if (!glob_res.success) {
     return out;

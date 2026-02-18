@@ -34,11 +34,8 @@ registration_node:
       angle_thresh_degree: 30.0
       # max distance between plane centers, i.e. segmentation mask off - abort if top plane and ground plane are visible
       max_plane_center_dist: 0.6
-
-      clustering:
-        support_radius: 0.1
-        min_neighbors: 10
-        erosion_iters: 0
+      # Whether to enable plane clipping (i.e. mask out points above the detected plane)
+      enable_plane_clipping: true
 
     # ------------------------------------------------------------
     # Local registration (ICP)

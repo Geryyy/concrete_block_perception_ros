@@ -20,8 +20,8 @@ public:
   explicit BlockDetectionTracker(const DetectionParams & params);
 
   msg::TrackedDetectionArray update(
-    const vision_msgs::msg::Detection2DArray & detections,
-    const sensor_msgs::msg::Image::SharedPtr & mask);
+    const vision_msgs::msg::Detection2DArray & msg,
+    const sensor_msgs::msg::Image::ConstSharedPtr & mask_msg);
 
   void reset();   // optional but useful
 
@@ -30,7 +30,7 @@ private:
   {
     uint32_t detection_id;
     vision_msgs::msg::Detection2D detection;
-    sensor_msgs::msg::Image mask;
+    cv::Mat mask_cv;
 
     uint32_t age = 0;
     uint32_t misses = 0;

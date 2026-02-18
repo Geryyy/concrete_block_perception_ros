@@ -178,3 +178,29 @@ void drawTrackingBoxes(
     drawBoundingBox(image, t.detection.bbox, color);
   }
 }
+
+void drawCircle(
+  cv::Mat & image,
+  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const cv::Scalar & color,
+  int thickness = 2,
+  int line_type = cv::LINE_AA)
+{
+
+  for (const auto & t : tracked.detections) {
+
+    const auto & bbox = t.detection.bbox;
+    int cx = static_cast<int>(bbox.center.position.x);
+    int cy = static_cast<int>(bbox.center.position.y);
+    int radius = static_cast<int>(t.suppression_radius);
+    cv::Point center(cx, cy);
+
+    cv::circle(
+      image,
+      center,
+      radius,
+      color,
+      thickness,
+      line_type);
+  }
+}

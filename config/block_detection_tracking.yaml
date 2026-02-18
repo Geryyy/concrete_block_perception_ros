@@ -19,4 +19,5 @@ block_detection_tracking_node:
       # Debugging
       # -------------------------
       publish_debug_image: true
+      bypass_tracking: true
 
