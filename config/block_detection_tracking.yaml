@@ -15,9 +15,8 @@ block_detection_tracking_node:
       suppression_radius: 0.6
       confirm_age: 3
       max_misses: 7
-        # -------------------------
+      # -------------------------
       # Debugging
       # -------------------------
       publish_debug_image: true
-      bypass_tracking: true
-
+      bypass_tracking: false

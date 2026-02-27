@@ -1,24 +1,36 @@
 world_model_node:
   ros__parameters:
+    # ----------------------------------
+    # Commissioning mode
+    # segment | track | register | full
+    # ----------------------------------
+    pipeline_mode: "full"
 
     # ----------------------------------
     # World model (minimal)
     # ----------------------------------
     min_points: 50
+    world_model:
+      object_timeout_s: 10.0
 
     # ----------------------------------
     # Registration gating
     # ----------------------------------
     min_fitness: 0.3
     max_rmse: 0.05
+    registration:
+      # Register only on new/reacquired tracks unless forced
+      register_every_frame: false
+      min_reregister_s: 2.0
+      service_name: "/register_block_pose"
+
+    # ----------------------------------
+    # Input synchronization gating
+    # ----------------------------------
+    sync:
+      max_delta_s: 0.06
 
     # ----------------------------------
     # Object / template selection
     # ----------------------------------
     object_class: "concrete_block"
-
-    # ----------------------------------
-    # Registration service
-    # ----------------------------------
-    registration:
-      service_name: "/register_block_pose"

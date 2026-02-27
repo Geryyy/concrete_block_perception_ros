@@ -1,20 +1,21 @@
-import os
-import subprocess
-from launch.actions import IncludeLaunchDescription
-from launch.actions import DeclareLaunchArgument
-from ament_index_python import get_package_share_directory
-from launch.substitutions import LaunchConfiguration, PathSubstitution
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PathSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution
-
-from launch import LaunchDescription
 
 
 def generate_launch_description():
     pkg_dir = FindPackageShare("concrete_block_perception")
 
-    # Declare launch arguments
+    stage_arg = DeclareLaunchArgument(
+        "stage",
+        default_value="segment",
+        description="Commissioning stage: segment | track | register | full",
+    )
+
     model_arg = DeclareLaunchArgument(
         "model_path",
         default_value=PathJoinSubstitution(
@@ -39,12 +40,6 @@ def generate_launch_description():
         "use_sim_time",
         default_value="false",
         description="Use simulation clock",
-    )
-
-    mode_arg = DeclareLaunchArgument(
-        "pipeline_mode",
-        default_value="full",
-        description="segment | track | register | full",
     )
 
     block_detection_tracking_params = PathJoinSubstitution(
@@ -79,13 +74,33 @@ def generate_launch_description():
         ]
     )
 
+    needs_track = IfCondition(
+        PythonExpression(
+            [
+                "'",
+                LaunchConfiguration("stage"),
+                "' in ['track', 'register', 'full']",
+            ]
+        )
+    )
+
+    needs_registration = IfCondition(
+        PythonExpression(
+            [
+                "'",
+                LaunchConfiguration("stage"),
+                "' in ['register', 'full']",
+            ]
+        )
+    )
+
     return LaunchDescription(
         [
+            stage_arg,
             model_arg,
             labels_arg,
             gpu_arg,
             sim_time_arg,
-            mode_arg,
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -98,19 +113,6 @@ def generate_launch_description():
                     }
                 ],
             ),
-            # IncludeLaunchDescription(
-            #     PathSubstitution(FindPackageShare("foxglove_bridge"))
-            #     / "launch"
-            #     / "foxglove_bridge_launch.xml",
-            #     launch_arguments={
-            #         "port": "8765",
-            #         "log_level": "warn",
-            #         "best_effort_qos_topic_whitelist": (
-            #             "^/(seyond_points.*|zed2i/.*/image.*|"
-            #             "yolos_segmentor/(debug_image|mask).*)"
-            #         ),
-            #     }.items(),
-            # ),
             Node(
                 package="image_transport",
                 executable="republish",
@@ -141,9 +143,11 @@ def generate_launch_description():
                 name="block_detection_tracking_node",
                 parameters=[
                     block_detection_tracking_params,
+                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 ],
                 output="screen",
                 emulate_tty=True,
+                condition=needs_track,
             ),
             Node(
                 package="concrete_block_perception",
@@ -152,6 +156,7 @@ def generate_launch_description():
                 parameters=[block_registration_params],
                 output="screen",
                 emulate_tty=True,
+                condition=needs_registration,
             ),
             Node(
                 package="concrete_block_perception",
@@ -162,28 +167,17 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
-                        "pipeline_mode": LaunchConfiguration("pipeline_mode"),
+                        "pipeline_mode": LaunchConfiguration("stage"),
                     },
                 ],
                 output="screen",
                 emulate_tty=True,
                 remappings=[
-                    # =========================
-                    # Inputs
-                    # =========================
-                    # Image input (synced with cloud)
                     ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
-                    # Point cloud input (10 Hz)
                     ("points", "/seyond_points"),
                     ("tracked_detections", "/cbp/tracked_detections"),
-                    # =========================
-                    # Outputs
-                    # =========================
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
-                    # =========================
-                    # Debug topics
-                    # =========================
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),

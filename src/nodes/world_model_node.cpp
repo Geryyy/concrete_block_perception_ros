@@ -2,10 +2,11 @@
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
-#include <thread>
 #include <sstream>
 #include <iomanip>
 #include <chrono>
+#include <cmath>
+#include <algorithm>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -26,6 +27,7 @@
 #include "concrete_block_perception/action/register_block.hpp"
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
+#include "concrete_block_perception/msg/tracked_detection_array.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
@@ -46,11 +48,21 @@ class WorldModelNode : public rclcpp::Node
     sensor_msgs::msg::Image,
     sensor_msgs::msg::PointCloud2>;
 
+  enum class PipelineMode
+  {
+    kSegment,
+    kTrack,
+    kRegister,
+    kFull
+  };
+
   struct FrameContext
   {
     std_msgs::msg::Header header;
     std::vector<Block> blocks;
+    std::mutex blocks_mutex;
     std::atomic<size_t> pending{0};
+    std::atomic<bool> finished{false};
 
     // ---- timing ----
     std::chrono::steady_clock::time_point t_start;
@@ -59,17 +71,29 @@ class WorldModelNode : public rclcpp::Node
     std::chrono::steady_clock::time_point t_after_reg;
   };
 
-public:
+  public:
   WorldModelNode()
   : Node("block_world_model_node")
   {
     // ================================
-    // Parameters
+    // Parameters: gating + commissioning
     // ================================
+    const std::string mode_str =
+      declare_parameter<std::string>("pipeline_mode", "full");
+    pipeline_mode_ = parseMode(mode_str);
+
     min_fitness_ = declare_parameter<double>("min_fitness", 0.3);
     max_rmse_ = declare_parameter<double>("max_rmse", 0.05);
     object_class_ =
       declare_parameter<std::string>("object_class", "concrete_block");
+    max_sync_delta_s_ =
+      declare_parameter<double>("sync.max_delta_s", 0.06);
+    min_reregister_s_ =
+      declare_parameter<double>("registration.min_reregister_s", 2.0);
+    register_every_frame_ =
+      declare_parameter<bool>("registration.register_every_frame", false);
+    object_timeout_s_ =
+      declare_parameter<double>("world_model.object_timeout_s", 10.0);
 
     // ================================
     // Debug publishers
@@ -96,6 +120,9 @@ public:
     marker_pub_ =
       create_publisher<visualization_msgs::msg::MarkerArray>(
       "block_world_model_markers", 10);
+    tracked_pub_ =
+      create_publisher<concrete_block_perception::msg::TrackedDetectionArray>(
+      "tracked_detections", 10);
 
     // ================================
     // Sync image + cloud
@@ -132,12 +159,205 @@ public:
       rclcpp_action::create_client<RegisterBlock>(
       this, "register_block");
 
-    action_client_->wait_for_action_server();
+    if (!segment_client_->wait_for_service(std::chrono::seconds(2))) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Segmentation service not available at startup.");
+    }
 
-    WM_LOG(get_logger(), "WorldModelNode ready");
+    if (needsTracking() &&
+      !track_client_->wait_for_service(std::chrono::seconds(2)))
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Tracking service not available at startup.");
+    }
+
+    if (needsRegistration() &&
+      !action_client_->wait_for_action_server(std::chrono::seconds(2)))
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Registration action not available at startup.");
+    }
+
+    WM_LOG(
+      get_logger(),
+      "WorldModelNode ready | mode=%s",
+      mode_str.c_str());
   }
 
 private:
+  PipelineMode parseMode(const std::string & mode_str)
+  {
+    if (mode_str == "segment") {
+      return PipelineMode::kSegment;
+    }
+    if (mode_str == "track") {
+      return PipelineMode::kTrack;
+    }
+    if (mode_str == "register") {
+      return PipelineMode::kRegister;
+    }
+    return PipelineMode::kFull;
+  }
+
+  bool needsTracking() const
+  {
+    return pipeline_mode_ == PipelineMode::kTrack ||
+           pipeline_mode_ == PipelineMode::kRegister ||
+           pipeline_mode_ == PipelineMode::kFull;
+  }
+
+  bool needsRegistration() const
+  {
+    return pipeline_mode_ == PipelineMode::kRegister ||
+           pipeline_mode_ == PipelineMode::kFull;
+  }
+
+  bool shouldRegister(
+    const concrete_block_perception::msg::TrackedDetection & det,
+    const rclcpp::Time & stamp)
+  {
+    if (register_every_frame_) {
+      last_registration_stamp_[det.detection_id] = stamp;
+      return true;
+    }
+
+    if (det.age <= 1) {
+      last_registration_stamp_[det.detection_id] = stamp;
+      return true;
+    }
+
+    auto it = last_registration_stamp_.find(det.detection_id);
+    if (it == last_registration_stamp_.end()) {
+      last_registration_stamp_[det.detection_id] = stamp;
+      return true;
+    }
+
+    if ((stamp - it->second).seconds() >= min_reregister_s_) {
+      it->second = stamp;
+      return true;
+    }
+
+    return false;
+  }
+
+  void resetBusy()
+  {
+    busy_.store(false);
+  }
+
+  void cleanupFrame(uint64_t frame_id)
+  {
+    std::lock_guard<std::mutex> lock(frames_mutex_);
+    frames_.erase(frame_id);
+  }
+
+  void publishWorldMarkers(
+    const std_msgs::msg::Header & header,
+    const std::vector<Block> & blocks)
+  {
+    visualization_msgs::msg::MarkerArray ma;
+    int marker_id = 0;
+    for (const auto & b : blocks) {
+      visualization_msgs::msg::Marker m;
+      m.header = header;
+      m.ns = "cbp_blocks";
+      m.id = marker_id++;
+      m.type = visualization_msgs::msg::Marker::CUBE;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.pose = b.pose;
+      m.scale.x = 0.4;
+      m.scale.y = 0.2;
+      m.scale.z = 0.2;
+      m.color.r = 0.1f;
+      m.color.g = 0.8f;
+      m.color.b = 0.2f;
+      m.color.a = 0.6f;
+      ma.markers.push_back(std::move(m));
+    }
+    marker_pub_->publish(ma);
+  }
+
+  void publishPersistentWorld(const std_msgs::msg::Header & header)
+  {
+    BlockArray out;
+    out.header = header;
+
+    const rclcpp::Time now_stamp(header.stamp);
+
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      for (auto it = persistent_world_.begin(); it != persistent_world_.end();) {
+        const rclcpp::Time seen(it->second.last_seen);
+        if ((now_stamp - seen).seconds() > object_timeout_s_) {
+          it = persistent_world_.erase(it);
+          continue;
+        }
+        out.blocks.push_back(it->second);
+        ++it;
+      }
+    }
+
+    world_pub_->publish(out);
+    publishWorldMarkers(header, out.blocks);
+  }
+
+  void maybeFinalizeFrame(uint64_t frame_id)
+  {
+    std::shared_ptr<FrameContext> ctx;
+    {
+      std::lock_guard<std::mutex> lock(frames_mutex_);
+      auto it = frames_.find(frame_id);
+      if (it == frames_.end()) {
+        return;
+      }
+      ctx = it->second;
+    }
+
+    if (ctx->pending.load() != 0) {
+      return;
+    }
+
+    bool expected = false;
+    if (!ctx->finished.compare_exchange_strong(expected, true)) {
+      return;
+    }
+
+    ctx->t_after_reg = std::chrono::steady_clock::now();
+
+    auto seg_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+      ctx->t_after_seg - ctx->t_start).count();
+
+    auto track_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+      ctx->t_after_track - ctx->t_after_seg).count();
+
+    auto reg_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+      ctx->t_after_reg - ctx->t_after_track).count();
+
+    auto total_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+      ctx->t_after_reg - ctx->t_start).count();
+
+    RCLCPP_WARN(
+      get_logger(),
+      "Frame timing | seg: %ld ms | track: %ld ms | reg: %ld ms | total: %ld ms",
+      seg_ms, track_ms, reg_ms, total_ms);
+
+    if (pipeline_mode_ == PipelineMode::kFull) {
+      publishPersistentWorld(ctx->header);
+    } else {
+      publishFrame(*ctx);
+    }
+
+    cleanupFrame(frame_id);
+    resetBusy();
+  }
+
   // ==========================================================
   // Sync callback (non-blocking)
   // ==========================================================
@@ -145,125 +365,203 @@ private:
     const sensor_msgs::msg::Image::ConstSharedPtr image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
   {
-    if (busy_) {
-      // RCLCPP_INFO(get_logger(), "Dropping frame (busy)");
+    bool expected = false;
+    if (!busy_.compare_exchange_strong(expected, true)) {
       return;
     }
 
-    busy_ = true;
+    const rclcpp::Time t_img(image->header.stamp);
+    const rclcpp::Time t_cloud(cloud->header.stamp);
+    const double dt = std::abs((t_img - t_cloud).seconds());
 
-    std::thread(
-      [this, image, cloud]() {
-        processFrame(image, cloud);
-        busy_ = false;
-      }).detach();
+    if (dt > max_sync_delta_s_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Dropped frame pair due to sync delta %.4f s (> %.4f s)",
+        dt,
+        max_sync_delta_s_);
+      resetBusy();
+      return;
+    }
+
+    processFrame(image, cloud);
   }
 
   // ==========================================================
-  // Pipeline
+  // Pipeline (asynchronous chain)
   // ==========================================================
   void processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
   {
-    try {
-      auto t_start = std::chrono::steady_clock::now();
-      // ==========================
-      // 1️⃣ Segmentation
-      // ==========================
-      RCLCPP_INFO(get_logger(), "Processing frame %lu", frame_counter_ + 1);
+    const auto t_start = std::chrono::steady_clock::now();
 
-      RCLCPP_INFO(get_logger(), "Requesting segmentation...");
-      auto seg_req =
-        std::make_shared<SegmentSrv::Request>();
-      seg_req->image = *image;
-      seg_req->return_debug = false;
-
-      auto seg_res =
-        segment_client_->async_send_request(seg_req).get();
-
-      auto t_after_seg = std::chrono::steady_clock::now();
-
-      if (!seg_res->success) {return;}
-
-      publishDetectionOverlay(
-        image, seg_res->detections, seg_res->mask);
-
-      // ==========================
-      // 2️⃣ Tracking
-      // ==========================
-      RCLCPP_INFO(get_logger(), "Requesting tracking...");
-      auto track_req =
-        std::make_shared<TrackSrv::Request>();
-
-      track_req->detections = seg_res->detections;
-      track_req->mask = seg_res->mask;
-
-      auto track_res =
-        track_client_->async_send_request(track_req).get();
-
-      auto t_after_track = std::chrono::steady_clock::now();
-
-      publishTrackingOverlay(
-        image, track_res->tracked);
-
-      if (track_res->tracked.detections.empty()) {
-        publishEmpty(cloud->header);
-        return;
-      }
-
-      // ==========================
-      // 3️⃣ Registration
-      // ==========================
-      RCLCPP_INFO(
-        get_logger(), "Requesting registration for %zu detections...",
-        track_res->tracked.detections.size());
-      auto ctx = std::make_shared<FrameContext>();
-      ctx->t_start = t_start;
-      ctx->t_after_seg = t_after_seg;
-      ctx->t_after_track = t_after_track;
-
-      ctx->header = cloud->header;
-      ctx->pending.store(
-        track_res->tracked.detections.size());
-
-      uint64_t frame_id = ++frame_counter_;
-
-      {
-        std::lock_guard<std::mutex> lock(frames_mutex_);
-        frames_[frame_id] = ctx;
-      }
-
-      for (const auto & det :
-        track_res->tracked.detections)
-      {
-        RCLCPP_INFO(
-          get_logger(), "Requesting registration for detection %u (confidence: %.2f)...",
-          det.detection_id, det.detection.results[0].hypothesis.score);
-
-        RegisterBlock::Goal goal;
-        goal.mask = det.mask;
-        goal.cloud = *cloud;
-        goal.object_class = object_class_;
-
-        auto options =
-          rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
-
-        options.result_callback =
-          [this, frame_id, det](
-          const auto & result)
-          {
-            handleResult(frame_id, det, result);
-          };
-
-        action_client_->async_send_goal(goal, options);
-      }
-
-    } catch (const std::exception & e) {
-      RCLCPP_ERROR(
-        get_logger(),
-        "Pipeline error: %s", e.what());
+    if (!segment_client_->service_is_ready()) {
+      RCLCPP_WARN(get_logger(), "Segmentation service unavailable.");
+      resetBusy();
+      return;
     }
+
+    auto seg_req =
+      std::make_shared<SegmentSrv::Request>();
+    seg_req->image = *image;
+    seg_req->return_debug = false;
+
+    segment_client_->async_send_request(
+      seg_req,
+      [this, image, cloud, t_start](
+        rclcpp::Client<SegmentSrv>::SharedFuture seg_future)
+      {
+        try {
+          auto seg_res = seg_future.get();
+          auto t_after_seg = std::chrono::steady_clock::now();
+
+          if (!seg_res || !seg_res->success) {
+            publishEmpty(cloud->header);
+            resetBusy();
+            return;
+          }
+
+          publishDetectionOverlay(
+            image, seg_res->detections, seg_res->mask);
+
+          if (pipeline_mode_ == PipelineMode::kSegment) {
+            publishEmpty(cloud->header);
+            resetBusy();
+            return;
+          }
+
+          if (!track_client_->service_is_ready()) {
+            RCLCPP_WARN(get_logger(), "Tracking service unavailable.");
+            resetBusy();
+            return;
+          }
+
+          auto track_req =
+            std::make_shared<TrackSrv::Request>();
+          track_req->detections = seg_res->detections;
+          track_req->mask = seg_res->mask;
+
+          track_client_->async_send_request(
+            track_req,
+            [this, image, cloud, t_start, t_after_seg](
+              rclcpp::Client<TrackSrv>::SharedFuture track_future)
+            {
+              try {
+                auto track_res = track_future.get();
+                auto t_after_track = std::chrono::steady_clock::now();
+
+                if (!track_res) {
+                  publishEmpty(cloud->header);
+                  resetBusy();
+                  return;
+                }
+
+                publishTrackingOverlay(
+                  image, track_res->tracked);
+                tracked_pub_->publish(track_res->tracked);
+
+                if (track_res->tracked.detections.empty()) {
+                  publishEmpty(cloud->header);
+                  resetBusy();
+                  return;
+                }
+
+                if (pipeline_mode_ == PipelineMode::kTrack) {
+                  publishEmpty(cloud->header);
+                  resetBusy();
+                  return;
+                }
+
+                if (!action_client_->action_server_is_ready()) {
+                  RCLCPP_WARN(get_logger(), "Registration action unavailable.");
+                  resetBusy();
+                  return;
+                }
+
+                auto ctx = std::make_shared<FrameContext>();
+                ctx->t_start = t_start;
+                ctx->t_after_seg = t_after_seg;
+                ctx->t_after_track = t_after_track;
+                ctx->header = cloud->header;
+                ctx->pending.store(0);
+                ctx->finished.store(false);
+
+                const uint64_t frame_id = ++frame_counter_;
+                {
+                  std::lock_guard<std::mutex> lock(frames_mutex_);
+                  frames_[frame_id] = ctx;
+                }
+
+                size_t registered = 0;
+                const rclcpp::Time frame_stamp(cloud->header.stamp);
+
+                for (const auto & det : track_res->tracked.detections) {
+                  if (!shouldRegister(det, frame_stamp)) {
+                    continue;
+                  }
+
+                  if (det.mask.data.empty()) {
+                    continue;
+                  }
+
+                  RegisterBlock::Goal goal;
+                  goal.mask = det.mask;
+                  goal.cloud = *cloud;
+                  goal.object_class = object_class_;
+
+                  auto options =
+                    rclcpp_action::Client<RegisterBlock>::SendGoalOptions();
+
+                  ctx->pending.fetch_add(1);
+                  ++registered;
+
+                  options.goal_response_callback =
+                    [this, frame_id](
+                    GoalHandleRegisterBlock::SharedPtr goal_handle)
+                    {
+                      if (!goal_handle) {
+                        std::lock_guard<std::mutex> lock(frames_mutex_);
+                        auto it = frames_.find(frame_id);
+                        if (it != frames_.end()) {
+                          it->second->pending.fetch_sub(1);
+                        }
+                        maybeFinalizeFrame(frame_id);
+                      }
+                    };
+
+                  options.result_callback =
+                    [this, frame_id, det](
+                    const auto & result)
+                    {
+                      handleResult(frame_id, det, result);
+                    };
+
+                  action_client_->async_send_goal(goal, options);
+                }
+
+                if (registered == 0) {
+                  if (pipeline_mode_ == PipelineMode::kFull) {
+                    publishPersistentWorld(cloud->header);
+                  } else {
+                    publishEmpty(cloud->header);
+                  }
+                  cleanupFrame(frame_id);
+                  resetBusy();
+                  return;
+                }
+
+              } catch (const std::exception & e) {
+                RCLCPP_ERROR(get_logger(), "Tracking stage failed: %s", e.what());
+                resetBusy();
+              }
+            });
+
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(get_logger(), "Segmentation stage failed: %s", e.what());
+          resetBusy();
+        }
+      });
   }
 
   // ==========================================================
@@ -274,24 +572,23 @@ private:
     const concrete_block_perception::msg::TrackedDetection & det,
     const rclcpp_action::ClientGoalHandle<RegisterBlock>::WrappedResult & result)
   {
-    RCLCPP_INFO(
-      get_logger(),
-      "Received registration result for frame %lu, detection %u",
-      frame_id, det.detection_id);
-
-    std::lock_guard<std::mutex> lock(frames_mutex_);
-
-    auto it = frames_.find(frame_id);
-    if (it == frames_.end()) {return;}
-
-    auto & ctx = it->second;
+    std::shared_ptr<FrameContext> ctx;
+    {
+      std::lock_guard<std::mutex> lock(frames_mutex_);
+      auto it = frames_.find(frame_id);
+      if (it == frames_.end()) {
+        return;
+      }
+      ctx = it->second;
+    }
 
     if (result.code ==
       rclcpp_action::ResultCode::SUCCEEDED)
     {
       const auto & res = result.result;
 
-      if (res->success &&
+      if (res &&
+        res->success &&
         res->fitness >= min_fitness_ &&
         res->rmse <= max_rmse_)
       {
@@ -301,40 +598,22 @@ private:
         b.pose = res->pose;
         b.confidence = res->fitness;
         b.last_seen = ctx->header.stamp;
-        ctx->blocks.push_back(b);
+        b.pose_status = Block::POSE_PRECISE;
+        b.task_status = Block::TASK_FREE;
+        {
+          std::lock_guard<std::mutex> lock(ctx->blocks_mutex);
+          ctx->blocks.push_back(b);
+        }
 
+        if (pipeline_mode_ == PipelineMode::kFull) {
+          std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+          persistent_world_[b.id] = b;
+        }
       }
     }
 
-    if (ctx->pending.fetch_sub(1) == 1) {
-
-      ctx->t_after_reg = std::chrono::steady_clock::now();
-
-      auto seg_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-        ctx->t_after_seg - ctx->t_start).count();
-
-      auto track_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-        ctx->t_after_track - ctx->t_after_seg).count();
-
-      auto reg_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-        ctx->t_after_reg - ctx->t_after_track).count();
-
-      auto total_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-        ctx->t_after_reg - ctx->t_start).count();
-
-      RCLCPP_WARN(
-        get_logger(),
-        "Frame timing | seg: %ld ms | track: %ld ms | reg: %ld ms | total: %ld ms",
-        seg_ms, track_ms, reg_ms, total_ms);
-
-      publishFrame(*ctx);
-      frames_.erase(it);
-    }
-
+    ctx->pending.fetch_sub(1);
+    maybeFinalizeFrame(frame_id);
   }
 
   // ==========================================================
@@ -404,6 +683,7 @@ private:
     out.header = ctx.header;
     out.blocks = ctx.blocks;
     world_pub_->publish(out);
+    publishWorldMarkers(out.header, out.blocks);
   }
 
   void publishEmpty(const std_msgs::msg::Header & header)
@@ -411,6 +691,7 @@ private:
     BlockArray out;
     out.header = header;
     world_pub_->publish(out);
+    publishWorldMarkers(out.header, out.blocks);
   }
 
   // ==========================================================
@@ -427,20 +708,28 @@ private:
 
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<concrete_block_perception::msg::TrackedDetectionArray>::SharedPtr tracked_pub_;
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr track_debug_pub_;
-  // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr reg_cutout_pub_;
-  // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr reg_template_pub_;
 
   std::unordered_map<uint64_t, std::shared_ptr<FrameContext>> frames_;
   std::mutex frames_mutex_;
   std::atomic<uint64_t> frame_counter_{0};
   std::atomic<bool> busy_{false};
 
+  std::unordered_map<uint32_t, rclcpp::Time> last_registration_stamp_;
+  std::unordered_map<std::string, Block> persistent_world_;
+  std::mutex persistent_world_mutex_;
+
+  PipelineMode pipeline_mode_{PipelineMode::kFull};
   double min_fitness_;
   double max_rmse_;
   std::string object_class_;
+  double max_sync_delta_s_{0.06};
+  double min_reregister_s_{2.0};
+  bool register_every_frame_{false};
+  double object_timeout_s_{10.0};
 };
 
 int main(int argc, char ** argv)

@@ -28,6 +28,10 @@ def generate_launch_description():
                 "use_sim_time",
                 default_value="true",
             ),
+            DeclareLaunchArgument(
+                "pipeline_mode",
+                default_value="full",
+            ),
             Node(
                 package="concrete_block_perception",
                 executable="world_model_node",
@@ -37,6 +41,7 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
+                        "pipeline_mode": LaunchConfiguration("pipeline_mode"),
                     },
                 ],
                 remappings=[
