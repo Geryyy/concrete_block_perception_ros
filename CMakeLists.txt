@@ -47,6 +47,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TrackDetections.srv"
   "srv/SetPerceptionMode.srv"
   "srv/GetCoarseBlocks.srv"
+  "srv/RunPoseEstimation.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
   "msg/TrackedDetection.msg"

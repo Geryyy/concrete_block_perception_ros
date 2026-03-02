@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "concrete_block_perception/action/register_block.hpp"
+#include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_perception/utils/io_utils.hpp"
 
 #include "concrete_block_perception/registration/block_registration_pipeline.hpp"
@@ -31,6 +32,7 @@ class BlockRegistrationNode : public rclcpp::Node
 
   using GoalHandleRegisterBlock =
     rclcpp_action::ServerGoalHandle<RegisterBlockAction>;
+  using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
 
 public:
   BlockRegistrationNode()
@@ -81,12 +83,74 @@ public:
       rcl_action_server_get_default_options(),
       action_cb_group_);
 
+    register_service_ = create_service<RegisterBlockSrv>(
+      "register_block_pose",
+      std::bind(
+        &BlockRegistrationNode::handle_register_service,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     RCLCPP_INFO(
       get_logger(),
       "Block registration node ready");
   }
 
 private:
+  void handle_register_service(
+    const std::shared_ptr<RegisterBlockSrv::Request> request,
+    std::shared_ptr<RegisterBlockSrv::Response> response)
+  {
+    const auto start_time = std::chrono::steady_clock::now();
+
+    if (request->cloud.data.empty() || request->mask.data.empty()) {
+      response->success = false;
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped tf_cloud;
+    if (!lookupCloudTransform(request->cloud, tf_cloud)) {
+      response->success = false;
+      return;
+    }
+
+    auto scene_ptr = pointcloud2_to_open3d(request->cloud);
+    if (!scene_ptr || scene_ptr->points_.empty()) {
+      response->success = false;
+      return;
+    }
+
+    cv::Mat mask = cv_bridge::toCvCopy(request->mask, "mono8")->image;
+
+    RegistrationInput input;
+    input.scene = *scene_ptr;
+    input.mask = mask;
+    input.T_world_cloud = transformToEigen(tf_cloud);
+
+    auto output = pipeline_->run(input);
+    if (!output.success) {
+      response->success = false;
+      return;
+    }
+
+    debug_->publishMask(request->mask, mask);
+    debug_->publishVisualization(
+      request->cloud,
+      output.debug_scene,
+      output.template_index,
+      output.T_world_block);
+
+    response->pose = to_ros_pose(output.T_world_block);
+    response->fitness = output.fitness;
+    response->rmse = output.rmse;
+    response->success = true;
+
+    const auto end_time = std::chrono::steady_clock::now();
+    const float total_ms =
+      std::chrono::duration<float, std::milli>(end_time - start_time).count();
+    RCLCPP_INFO(get_logger(), "Registration completed in %.2f ms", total_ms);
+  }
+
   rclcpp_action::GoalResponse
   handle_goal(
     const rclcpp_action::GoalUUID &,
@@ -157,7 +221,7 @@ private:
 
     geometry_msgs::msg::TransformStamped tf_cloud;
 
-    if (!lookupCloudTransform(*goal, tf_cloud)) {
+    if (!lookupCloudTransform(goal->cloud, tf_cloud)) {
       RCLCPP_WARN(
         get_logger(),
         "TF lookup failed.");
@@ -251,15 +315,15 @@ private:
   }
 
   bool lookupCloudTransform(
-    const RegisterBlockAction::Goal & goal,
+    const sensor_msgs::msg::PointCloud2 & cloud,
     geometry_msgs::msg::TransformStamped & tf_out)
   {
     try {
       tf_out =
         tf_buffer_->lookupTransform(
         config_.world_frame,
-        goal.cloud.header.frame_id,
-        rclcpp::Time(goal.cloud.header.stamp),
+        cloud.header.frame_id,
+        rclcpp::Time(cloud.header.stamp),
         rclcpp::Duration::from_seconds(0.5));
 
       return true;
@@ -277,6 +341,7 @@ private:
   std::unique_ptr<RosDebugHelpers> debug_;
 
   rclcpp_action::Server<RegisterBlockAction>::SharedPtr action_server_;
+  rclcpp::Service<RegisterBlockSrv>::SharedPtr register_service_;
   rclcpp::CallbackGroup::SharedPtr action_cb_group_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;

@@ -56,7 +56,7 @@ def generate_launch_description():
     )
     declare_perception_mode = DeclareLaunchArgument(
         "perception_mode",
-        default_value="FULL",
+        default_value="IDLE",
         description="Startup perception mode for world model node",
     )
 

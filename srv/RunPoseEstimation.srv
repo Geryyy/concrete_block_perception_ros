@@ -1,0 +1,8 @@
+string mode
+string target_block_id
+bool enable_debug
+float32 timeout_s
+---
+bool success
+concrete_block_perception/BlockArray blocks
+string message

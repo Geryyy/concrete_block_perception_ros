@@ -40,87 +40,40 @@ Introduce a BT-facing `perception_orchestrator` node that controls existing serv
 ---
 
 ## Proposed Modes
-Use explicit modes matching task phases.
+Use explicit one-shot modes. The node stays idle between requests.
 
-1. `SCENE_SCAN`
-- Detect/segment all visible blocks.
-- Compute coarse 3D pose (centroid + yaw heuristic).
-- No full ICP per frame.
+1. `SCENE_DISCOVERY`
+- Run detect + segment + register for all visible blocks once.
+- Update persistent world model.
 
-2. `PRE_GRASP`
-- Focus on selected target block.
-- Optional refine on demand.
+2. `REFINE_BLOCK`
+- Run detect + segment + register for one given `block_id`.
+- Replace block pose in persistent world model.
 
-3. `GRASP_EXECUTE`
-- Freeze or very low-rate updates.
-
-4. `TRANSPORT`
-- Perception mostly off.
-
-5. `PRE_ASSEMBLY`
-- Refine grasped block and reference block pose.
-
-6. `ASSEMBLY_EXECUTE`
-- ROI-only updates if needed.
+3. `REFINE_GRASPED`
+- Run detect + segment + register for the grasped block once.
+- Target block id comes from request, or from world-model `TASK_MOVE`.
 
 ---
 
 ## Proposed ROS Interfaces
 These are intentionally minimal and BT-friendly.
 
-### 1) Set Mode
-File: `srv/SetPerceptionMode.srv`
+### 1) One-shot Pose Request
+File: `srv/RunPoseEstimation.srv`
 
 ```srv
-string mode            # SCENE_SCAN, PRE_GRASP, GRASP_EXECUTE, TRANSPORT, PRE_ASSEMBLY, ASSEMBLY_EXECUTE
-string target_block_id # optional, empty if none
+string mode            # SCENE_DISCOVERY | REFINE_BLOCK | REFINE_GRASPED
+string target_block_id # required for REFINE_BLOCK, optional for REFINE_GRASPED
 bool enable_debug
----
-bool success
-string message
-```
-
-### 2) Coarse Scene Update
-File: `srv/GetCoarseBlocks.srv`
-
-```srv
-bool force_refresh
 float32 timeout_s
-builtin_interfaces/Time query_stamp  # optional; zero = latest
 ---
 bool success
 concrete_block_perception/msg/BlockArray blocks
 string message
 ```
 
-Semantics:
-- Returns coarse pose blocks quickly.
-- Pose quality marked as coarse in metadata (see below).
-
-### 3) Precise Pose On Demand
-File: `action/RefineBlockPose.action`
-
-```action
-string block_id
-geometry_msgs/PoseStamped seed_pose   # optional; frame must match cloud/image frame
-float32 timeout_s
-bool use_roi
-float32 roi_size_m                     # used when use_roi=true
-builtin_interfaces/Time query_stamp    # optional; zero = latest
----
-bool success
-concrete_block_perception/msg/Block refined_block
-string message
----
-string stage                           # SEGMENT, TRACK, REGISTER
-float32 progress
-```
-
-Semantics:
-- Runs expensive registration for one target.
-- Updates world cache only for that target on success.
-
-### 4) Optional Cache Query
+### 2) Optional Cache Query
 File: `srv/GetBlockState.srv`
 
 ```srv
@@ -206,20 +159,17 @@ Use fixed keys to decouple BT/action nodes from perception internals.
 ## Suggested BT Sequence Integration
 
 ### Pickup
-1. `SetPerceptionMode(SCENE_SCAN)`
-2. `GetCoarseBlocks` -> choose target
-3. `SetPerceptionMode(PRE_GRASP, target_id)`
-4. `RefineBlockPose(target_id)`
+1. `RunPoseEstimation(SCENE_DISCOVERY)`
+2. choose target from world model
+3. `RunPoseEstimation(REFINE_BLOCK, target_id)`
 5. execute grasp
 
 ### Transport
-1. `SetPerceptionMode(TRANSPORT)`
-2. no updates
+1. no perception requests (node remains idle)
 
 ### Assembly
-1. `SetPerceptionMode(PRE_ASSEMBLY, target_id)`
-2. `RefineBlockPose(reference_id)`
-3. `RefineBlockPose(target_id)`
+1. `RunPoseEstimation(REFINE_BLOCK, reference_id)`
+2. `RunPoseEstimation(REFINE_GRASPED, grasped_id or empty)`
 4. execute assembly
 
 ---
@@ -230,33 +180,25 @@ Prioritize this order:
 1. **Registration on demand only**
 - biggest practical gain.
 
-2. **Coarse pose path without ICP**
-- centroid from segmented cloud + simple yaw estimate.
-
-3. **ROI refinement**
+2. **ROI refinement**
 - crop image/cloud around seed pose before segmentation/registration.
 
-4. **Tracking-only updates between refines**
-- no repeated registration.
+3. **No background processing**
+- node is idle unless a one-shot request is active.
 
 ---
 
 ## Incremental Migration Plan
 
-### Phase 1 (Low risk)
-- Add `SetPerceptionMode` + `GetCoarseBlocks`.
-- Keep current world node; gate registration by mode.
-- Keep existing topics unchanged.
+### Phase 1 (Current)
+- Add `RunPoseEstimation` service with three one-shot modes.
+- Keep node idle between calls.
+- Persist updated precise poses in world model.
 
 ### Phase 2
-- Add `RefineBlockPose` action.
-- Move precise registration to explicit BT requests.
+- Add ROI-seeded refinement path from FK pose.
 
 ### Phase 3
-- Introduce ROI refine path.
-- Optionally split orchestration into dedicated node.
-
-### Phase 4
 - Optional component composition/intra-process optimization.
 
 ---

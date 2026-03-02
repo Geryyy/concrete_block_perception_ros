@@ -37,7 +37,7 @@ def generate_launch_description():
         }.items(),
     )
 
-    set_mode_call = TimerAction(
+    scene_discovery_call = TimerAction(
         period=8.0,
         actions=[
             ExecuteProcess(
@@ -45,9 +45,10 @@ def generate_launch_description():
                     "bash",
                     "-lc",
                     (
-                        "ros2 service call /world_model_node/set_mode "
-                        "concrete_block_perception/srv/SetPerceptionMode "
-                        "\"{mode: SCENE_SCAN, target_block_id: '', enable_debug: true}\""
+                        "ros2 service call /world_model_node/run_pose_estimation "
+                        "concrete_block_perception/srv/RunPoseEstimation "
+                        "\"{mode: SCENE_DISCOVERY, target_block_id: '', "
+                        'enable_debug: true, timeout_s: 8.0}"'
                     ),
                 ],
                 output="screen",
@@ -55,18 +56,37 @@ def generate_launch_description():
         ],
     )
 
-    get_coarse_call = TimerAction(
-        period=9.0,
+    refine_block_call = TimerAction(
+        period=12.0,
         actions=[
             ExecuteProcess(
                 cmd=[
                     "bash",
                     "-lc",
                     (
-                        "ros2 service call /world_model_node/get_coarse_blocks "
-                        "concrete_block_perception/srv/GetCoarseBlocks "
-                        '"{force_refresh: false, timeout_s: 0.0, '
-                        'query_stamp: {sec: 0, nanosec: 0}}"'
+                        "ros2 service call /world_model_node/run_pose_estimation "
+                        "concrete_block_perception/srv/RunPoseEstimation "
+                        "\"{mode: REFINE_BLOCK, target_block_id: 'block_1', "
+                        'enable_debug: true, timeout_s: 8.0}"'
+                    ),
+                ],
+                output="screen",
+            )
+        ],
+    )
+
+    refine_grasped_call = TimerAction(
+        period=18.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    "bash",
+                    "-lc",
+                    (
+                        "ros2 service call /world_model_node/run_pose_estimation "
+                        "concrete_block_perception/srv/RunPoseEstimation "
+                        "\"{mode: REFINE_GRASPED, target_block_id: '', "
+                        'enable_debug: true, timeout_s: 8.0}"'
                     ),
                 ],
                 output="screen",
@@ -79,7 +99,8 @@ def generate_launch_description():
             declare_bag,
             declare_use_sim_time,
             pipeline_launch,
-            set_mode_call,
-            get_coarse_call,
+            scene_discovery_call,
+            # refine_block_call,
+            # refine_grasped_call,
         ]
     )

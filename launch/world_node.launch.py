@@ -34,7 +34,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "perception_mode",
-                default_value="FULL",
+                default_value="IDLE",
             ),
             DeclareLaunchArgument(
                 "params_file",

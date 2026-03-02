@@ -6,7 +6,7 @@ world_model_node:
     # ----------------------------------
     pipeline_mode: "full"
     # BT-facing runtime mode (FULL keeps backward-compatible behavior)
-    perception_mode: "FULL"
+    perception_mode: "IDLE"
 
     # ----------------------------------
     # World model (minimal)
