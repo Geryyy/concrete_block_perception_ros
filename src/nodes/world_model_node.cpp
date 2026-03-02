@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <condition_variable>
+#include <future>
 #include <atomic>
 #include <sstream>
 #include <iomanip>
@@ -27,7 +28,6 @@
 #include <opencv2/opencv.hpp>
 
 #include "ros2_yolos_cpp/srv/segment_image.hpp"
-#include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
 #include "concrete_block_perception/srv/get_coarse_blocks.hpp"
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
@@ -48,7 +48,6 @@ using concrete_block_perception::msg::BlockArray;
 class WorldModelNode : public rclcpp::Node
 {
   using SegmentSrv = ros2_yolos_cpp::srv::SegmentImage;
-  using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
   using SetModeSrv = concrete_block_perception::srv::SetPerceptionMode;
   using GetCoarseSrv = concrete_block_perception::srv::GetCoarseBlocks;
   using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
@@ -124,7 +123,7 @@ class WorldModelNode : public rclcpp::Node
   : Node("block_world_model_node")
   {
     run_pose_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    register_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    action_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
     // ================================
     // Parameters: gating + commissioning
@@ -225,13 +224,9 @@ class WorldModelNode : public rclcpp::Node
       create_client<SegmentSrv>(
       "/yolos_segmentor_service/segment");
 
-    const std::string registration_service_name =
-      declare_parameter<std::string>("registration.service_name", "/register_block_pose");
-    register_client_ =
-      create_client<RegisterBlockSrv>(
-      registration_service_name,
-      rmw_qos_profile_services_default,
-      register_client_cb_group_);
+    action_client_ =
+      rclcpp_action::create_client<RegisterBlock>(
+      this, "register_block", action_client_cb_group_);
 
     // Apply BT-facing mode before startup service/action waits.
     if (!applyPerceptionMode(perception_mode_str)) {
@@ -251,11 +246,11 @@ class WorldModelNode : public rclcpp::Node
     }
 
     if (needsRegistration() &&
-      !register_client_->wait_for_service(std::chrono::seconds(2)))
+      !action_client_->wait_for_action_server(std::chrono::seconds(2)))
     {
       RCLCPP_WARN(
         get_logger(),
-        "Registration service not available at startup.");
+        "Registration action not available at startup.");
     }
 
     set_mode_srv_ = create_service<SetModeSrv>(
@@ -542,22 +537,50 @@ private:
     Block & out_block,
     std::string & reason)
   {
-    auto req = std::make_shared<RegisterBlockSrv::Request>();
-    req->mask = mask;
-    req->cloud = cloud;
-    req->object_class = object_class_;
+    RegisterBlock::Goal goal;
+    goal.mask = mask;
+    goal.cloud = cloud;
+    goal.object_class = object_class_;
 
-    auto result_future = register_client_->async_send_request(req);
-    if (result_future.wait_for(std::chrono::duration<double>(timeout_s)) !=
+    auto send_goal_future = action_client_->async_send_goal(goal);
+    {
+      std::lock_guard<std::mutex> lock(action_send_futures_mutex_);
+      action_send_futures_.push_back(send_goal_future);
+      if (action_send_futures_.size() > 128U) {
+        action_send_futures_.erase(action_send_futures_.begin());
+      }
+    }
+
+    if (send_goal_future.wait_for(std::chrono::duration<double>(timeout_s)) !=
       std::future_status::ready)
     {
-      reason = "service timeout";
+      reason = "goal response timeout";
       return false;
     }
 
-    auto res = result_future.get();
+    auto goal_handle = send_goal_future.get();
+    if (!goal_handle) {
+      reason = "goal rejected";
+      return false;
+    }
+
+    auto result_future = action_client_->async_get_result(goal_handle);
+    if (result_future.wait_for(std::chrono::duration<double>(timeout_s)) !=
+      std::future_status::ready)
+    {
+      reason = "result timeout";
+      return false;
+    }
+
+    auto wrapped = result_future.get();
+    if (wrapped.code != rclcpp_action::ResultCode::SUCCEEDED) {
+      reason = "result code " + std::to_string(static_cast<int>(wrapped.code));
+      return false;
+    }
+
+    const auto & res = wrapped.result;
     if (!res) {
-      reason = "empty service response";
+      reason = "empty result response";
       return false;
     }
     if (!res->success) {
@@ -1137,8 +1160,8 @@ private:
             refine_target = run_request.target_block_id;
           }
 
-          if (!register_client_->service_is_ready()) {
-            RCLCPP_WARN(get_logger(), "Registration service unavailable.");
+          if (!action_client_->action_server_is_ready()) {
+            RCLCPP_WARN(get_logger(), "Registration action unavailable.");
             resetBusy();
             return;
           }
@@ -1437,12 +1460,12 @@ private:
     message_filters::Synchronizer<SyncPolicy>> sync_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
-  rclcpp::Client<RegisterBlockSrv>::SharedPtr register_client_;
+  rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
   rclcpp::CallbackGroup::SharedPtr run_pose_cb_group_;
-  rclcpp::CallbackGroup::SharedPtr register_client_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr action_client_cb_group_;
   rclcpp::TimerBase::SharedPtr marker_refresh_timer_;
 
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
@@ -1497,6 +1520,8 @@ private:
   uint64_t one_shot_done_sequence_{0};
   bool one_shot_last_success_{false};
   std::string one_shot_last_message_;
+  std::mutex action_send_futures_mutex_;
+  std::vector<std::shared_future<GoalHandleRegisterBlock::SharedPtr>> action_send_futures_;
 };
 
 int main(int argc, char ** argv)
