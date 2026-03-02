@@ -2,6 +2,7 @@ import os
 import subprocess
 from launch.actions import IncludeLaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from ament_index_python import get_package_share_directory
 from launch.substitutions import LaunchConfiguration, PathSubstitution
 from launch_ros.actions import Node
@@ -47,6 +48,12 @@ def generate_launch_description():
         description="segment | track | register | full",
     )
 
+    start_world_model_arg = DeclareLaunchArgument(
+        "start_world_model",
+        default_value="true",
+        description="Whether to start world_model_node",
+    )
+
     block_detection_tracking_params = PathJoinSubstitution(
         [
             FindPackageShare("concrete_block_perception"),
@@ -86,6 +93,7 @@ def generate_launch_description():
             gpu_arg,
             sim_time_arg,
             mode_arg,
+            start_world_model_arg,
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -157,6 +165,7 @@ def generate_launch_description():
                 package="concrete_block_perception",
                 executable="world_model_node",
                 name="world_model_node",
+                condition=IfCondition(LaunchConfiguration("start_world_model")),
                 parameters=[
                     world_model_params,
                     {

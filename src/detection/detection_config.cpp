@@ -33,6 +33,10 @@ DetectionConfig::DetectionConfig(rclcpp::Node & node)
     node.declare_parameter<int>(
     "detection.max_misses", 5);
 
+  params_.max_output_misses =
+    node.declare_parameter<int>(
+    "detection.max_output_misses", 0);
+
   params_.publish_debug_image =
     node.declare_parameter<bool>(
     "detection.publish_debug_image", true);

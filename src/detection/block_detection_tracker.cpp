@@ -223,6 +223,9 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     if (track.age < params_.confirm_age) {
       continue;
     }
+    if (track.misses > params_.max_output_misses) {
+      continue;
+    }
 
     msg::TrackedDetection td;
     td.detection_id = track.detection_id;

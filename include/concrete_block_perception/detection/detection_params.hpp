@@ -13,6 +13,7 @@ struct DetectionParams
 
   uint32_t confirm_age = 2;
   uint32_t max_misses = 5;
+  uint32_t max_output_misses = 0;
 
   bool publish_debug_image = true;
   bool bypass_tracking = false;    // for testing

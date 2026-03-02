@@ -15,6 +15,7 @@ block_detection_tracking_node:
       suppression_radius: 0.6
       confirm_age: 3
       max_misses: 7
+      max_output_misses: 0
       # -------------------------
       # Debugging
       # -------------------------
