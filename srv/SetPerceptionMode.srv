@@ -1,0 +1,6 @@
+string mode
+string target_block_id
+bool enable_debug
+---
+bool success
+string message

@@ -19,6 +19,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     bag_path = LaunchConfiguration("bag")
     world_model_params = LaunchConfiguration("world_model_params")
+    perception_mode = LaunchConfiguration("perception_mode")
     block_detection_tracking_params = LaunchConfiguration(
         "block_detection_tracking_params"
     )
@@ -52,6 +53,11 @@ def generate_launch_description():
         / "config"
         / "world_model.yaml",
         description="YAML parameter file for world model node",
+    )
+    declare_perception_mode = DeclareLaunchArgument(
+        "perception_mode",
+        default_value="FULL",
+        description="Startup perception mode for world model node",
     )
 
     # -----------------------
@@ -95,6 +101,7 @@ def generate_launch_description():
         launch_arguments={
             "use_sim_time": use_sim_time,
             "params_file": world_model_params,
+            "perception_mode": perception_mode,
         }.items(),
     )
 
@@ -126,6 +133,7 @@ def generate_launch_description():
             declare_bag_path,
             declare_block_detection_tracking_params,
             declare_world_model_params,
+            declare_perception_mode,
             perception_launch,
             rosbag_nodes_launch,
             world_node_launch,

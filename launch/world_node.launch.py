@@ -33,6 +33,10 @@ def generate_launch_description():
                 default_value="full",
             ),
             DeclareLaunchArgument(
+                "perception_mode",
+                default_value="FULL",
+            ),
+            DeclareLaunchArgument(
                 "params_file",
                 default_value=default_world_model_params,
             ),
@@ -46,6 +50,7 @@ def generate_launch_description():
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
                         "pipeline_mode": LaunchConfiguration("pipeline_mode"),
+                        "perception_mode": LaunchConfiguration("perception_mode"),
                     },
                 ],
                 remappings=[

@@ -45,6 +45,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SegmentAtPoint.srv"
   "srv/RegisterBlock.srv"
   "srv/TrackDetections.srv"
+  "srv/SetPerceptionMode.srv"
+  "srv/GetCoarseBlocks.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
   "msg/TrackedDetection.msg"

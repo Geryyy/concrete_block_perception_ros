@@ -5,6 +5,8 @@ world_model_node:
     # segment | track | register | full
     # ----------------------------------
     pipeline_mode: "full"
+    # BT-facing runtime mode (FULL keeps backward-compatible behavior)
+    perception_mode: "FULL"
 
     # ----------------------------------
     # World model (minimal)
