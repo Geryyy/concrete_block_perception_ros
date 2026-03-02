@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -94,17 +95,32 @@ class WorldModelNode : public rclcpp::Node
       declare_parameter<bool>("registration.register_every_frame", false);
     object_timeout_s_ =
       declare_parameter<double>("world_model.object_timeout_s", 10.0);
+    debug_detection_overlay_enabled_ =
+      declare_parameter<bool>("debug.publish_detection_overlay", true);
+    debug_tracking_overlay_enabled_ =
+      declare_parameter<bool>("debug.publish_tracking_overlay", true);
+    perf_log_timing_enabled_ =
+      declare_parameter<bool>("perf.log_timing", true);
+    perf_log_every_n_frames_ =
+      declare_parameter<int>("perf.log_every_n_frames", 20);
+    if (perf_log_every_n_frames_ < 1) {
+      perf_log_every_n_frames_ = 1;
+    }
 
     // ================================
     // Debug publishers
     // ================================
-    det_debug_pub_ =
-      create_publisher<sensor_msgs::msg::Image>(
-      "debug/detection_overlay", 1);
+    if (debug_detection_overlay_enabled_) {
+      det_debug_pub_ =
+        create_publisher<sensor_msgs::msg::Image>(
+        "debug/detection_overlay", 1);
+    }
 
-    track_debug_pub_ =
-      create_publisher<sensor_msgs::msg::Image>(
-      "debug/tracking_overlay", 1);
+    if (debug_tracking_overlay_enabled_) {
+      track_debug_pub_ =
+        create_publisher<sensor_msgs::msg::Image>(
+        "debug/tracking_overlay", 1);
+    }
 
     // reg_cutout_pub_ =
     //   create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -343,10 +359,7 @@ private:
       std::chrono::duration_cast<std::chrono::milliseconds>(
       ctx->t_after_reg - ctx->t_start).count();
 
-    RCLCPP_WARN(
-      get_logger(),
-      "Frame timing | seg: %ld ms | track: %ld ms | reg: %ld ms | total: %ld ms",
-      seg_ms, track_ms, reg_ms, total_ms);
+    recordTiming(seg_ms, track_ms, reg_ms, total_ms);
 
     if (pipeline_mode_ == PipelineMode::kFull) {
       publishPersistentWorld(ctx->header);
@@ -367,6 +380,7 @@ private:
   {
     bool expected = false;
     if (!busy_.compare_exchange_strong(expected, true)) {
+      dropped_busy_frames_.fetch_add(1);
       return;
     }
 
@@ -375,6 +389,7 @@ private:
     const double dt = std::abs((t_img - t_cloud).seconds());
 
     if (dt > max_sync_delta_s_) {
+      dropped_sync_frames_.fetch_add(1);
       RCLCPP_WARN(
         get_logger(),
         "Dropped frame pair due to sync delta %.4f s (> %.4f s)",
@@ -422,10 +437,16 @@ private:
             return;
           }
 
-          publishDetectionOverlay(
-            image, seg_res->detections, seg_res->mask);
+          if (debug_detection_overlay_enabled_) {
+            publishDetectionOverlay(
+              image, seg_res->detections, seg_res->mask);
+          }
 
           if (pipeline_mode_ == PipelineMode::kSegment) {
+            auto total_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+              t_after_seg - t_start).count();
+            recordTiming(total_ms, 0, 0, total_ms);
             publishEmpty(cloud->header);
             resetBusy();
             return;
@@ -457,17 +478,39 @@ private:
                   return;
                 }
 
-                publishTrackingOverlay(
-                  image, track_res->tracked);
+                if (debug_tracking_overlay_enabled_) {
+                  publishTrackingOverlay(
+                    image, track_res->tracked);
+                }
                 tracked_pub_->publish(track_res->tracked);
 
                 if (track_res->tracked.detections.empty()) {
+                  auto seg_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_seg - t_start).count();
+                  auto track_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_after_seg).count();
+                  auto total_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_start).count();
+                  recordTiming(seg_ms, track_ms, 0, total_ms);
                   publishEmpty(cloud->header);
                   resetBusy();
                   return;
                 }
 
                 if (pipeline_mode_ == PipelineMode::kTrack) {
+                  auto seg_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_seg - t_start).count();
+                  auto track_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_after_seg).count();
+                  auto total_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_start).count();
+                  recordTiming(seg_ms, track_ms, 0, total_ms);
                   publishEmpty(cloud->header);
                   resetBusy();
                   return;
@@ -541,6 +584,16 @@ private:
                 }
 
                 if (registered == 0) {
+                  auto seg_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_seg - t_start).count();
+                  auto track_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_after_seg).count();
+                  auto total_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    t_after_track - t_start).count();
+                  recordTiming(seg_ms, track_ms, 0, total_ms);
                   if (pipeline_mode_ == PipelineMode::kFull) {
                     publishPersistentWorld(cloud->header);
                   } else {
@@ -674,6 +727,49 @@ private:
     track_debug_pub_->publish(*out);
   }
 
+  void recordTiming(
+    int64_t seg_ms,
+    int64_t track_ms,
+    int64_t reg_ms,
+    int64_t total_ms)
+  {
+    if (!perf_log_timing_enabled_) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(perf_mutex_);
+    perf_timing_count_++;
+    perf_seg_sum_ms_ += seg_ms;
+    perf_track_sum_ms_ += track_ms;
+    perf_reg_sum_ms_ += reg_ms;
+    perf_total_sum_ms_ += total_ms;
+
+    const uint64_t n = perf_timing_count_;
+    if ((n % static_cast<uint64_t>(perf_log_every_n_frames_)) != 0U) {
+      return;
+    }
+
+    const double avg_seg =
+      static_cast<double>(perf_seg_sum_ms_) / static_cast<double>(n);
+    const double avg_track =
+      static_cast<double>(perf_track_sum_ms_) / static_cast<double>(n);
+    const double avg_reg =
+      static_cast<double>(perf_reg_sum_ms_) / static_cast<double>(n);
+    const double avg_total =
+      static_cast<double>(perf_total_sum_ms_) / static_cast<double>(n);
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Timing avg over %llu frames | seg %.1f ms | track %.1f ms | reg %.1f ms | total %.1f ms | dropped busy %llu | dropped sync %llu",
+      static_cast<unsigned long long>(n),
+      avg_seg,
+      avg_track,
+      avg_reg,
+      avg_total,
+      static_cast<unsigned long long>(dropped_busy_frames_.load()),
+      static_cast<unsigned long long>(dropped_sync_frames_.load()));
+  }
+
   // ==========================================================
   // Publishing
   // ==========================================================
@@ -717,6 +813,8 @@ private:
   std::mutex frames_mutex_;
   std::atomic<uint64_t> frame_counter_{0};
   std::atomic<bool> busy_{false};
+  std::atomic<uint64_t> dropped_busy_frames_{0};
+  std::atomic<uint64_t> dropped_sync_frames_{0};
 
   std::unordered_map<uint32_t, rclcpp::Time> last_registration_stamp_;
   std::unordered_map<std::string, Block> persistent_world_;
@@ -730,6 +828,17 @@ private:
   double min_reregister_s_{2.0};
   bool register_every_frame_{false};
   double object_timeout_s_{10.0};
+  bool debug_detection_overlay_enabled_{true};
+  bool debug_tracking_overlay_enabled_{true};
+  bool perf_log_timing_enabled_{true};
+  int perf_log_every_n_frames_{20};
+
+  std::mutex perf_mutex_;
+  uint64_t perf_timing_count_{0};
+  int64_t perf_seg_sum_ms_{0};
+  int64_t perf_track_sum_ms_{0};
+  int64_t perf_reg_sum_ms_{0};
+  int64_t perf_total_sum_ms_{0};
 };
 
 int main(int argc, char ** argv)

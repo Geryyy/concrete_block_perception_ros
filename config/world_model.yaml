@@ -31,6 +31,17 @@ world_model_node:
       max_delta_s: 0.06
 
     # ----------------------------------
+    # Runtime debug/perf controls
+    # ----------------------------------
+    debug:
+      publish_detection_overlay: true
+      publish_tracking_overlay: true
+
+    perf:
+      log_timing: true
+      log_every_n_frames: 20
+
+    # ----------------------------------
     # Object / template selection
     # ----------------------------------
     object_class: "concrete_block"
