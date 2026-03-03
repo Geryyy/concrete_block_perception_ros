@@ -186,7 +186,10 @@ private:
   void handle_accepted(
     const std::shared_ptr<GoalHandleRegisterBlock> goal_handle)
   {
-    execute(goal_handle);
+    std::thread(
+      [this, goal_handle]() {
+        execute(goal_handle);
+      }).detach();
   }
 
   void execute(
@@ -297,9 +300,8 @@ private:
     result->rmse = output.rmse;
     result->success = true;
 
-    goal_handle->succeed(result);
-
     publish_feedback("done", 1.0f);
+    goal_handle->succeed(result);
 
     const auto end_time =
       std::chrono::steady_clock::now();

@@ -145,6 +145,7 @@ add_executable(world_model_node
   src/utils/io_utils.cpp
   src/utils/img_utils.cpp
   src/utils/block_utils.cpp
+  src/utils/world_model_utils.cpp
   src/utils/visu_utils.cpp
 )
 
