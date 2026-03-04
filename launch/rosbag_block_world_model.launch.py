@@ -17,6 +17,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
+    rviz = LaunchConfiguration("rviz")
     bag_path = LaunchConfiguration("bag")
     world_model_params = LaunchConfiguration("world_model_params")
     perception_mode = LaunchConfiguration("perception_mode")
@@ -31,6 +32,11 @@ def generate_launch_description():
         "use_sim_time",
         default_value="true",
         description="Use simulation (ROS) time",
+    )
+    declare_rviz = DeclareLaunchArgument(
+        "rviz",
+        default_value="true",
+        description="Start RViz from rosbag replay helper launch",
     )
 
     declare_bag_path = DeclareLaunchArgument(
@@ -86,6 +92,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "rviz": rviz,
         }.items(),
     )
 
@@ -130,6 +137,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             declare_use_sim_time,
+            declare_rviz,
             declare_bag_path,
             declare_block_detection_tracking_params,
             declare_world_model_params,

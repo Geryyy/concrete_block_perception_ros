@@ -75,6 +75,7 @@ def _set_block_task_status_call(
 def generate_launch_description():
     bag_path = LaunchConfiguration("bag")
     use_sim_time = LaunchConfiguration("use_sim_time")
+    rviz = LaunchConfiguration("rviz")
     perception_mode = LaunchConfiguration("perception_mode")
     run_scene_discovery = LaunchConfiguration("run_scene_discovery")
     run_refine_block = LaunchConfiguration("run_refine_block")
@@ -92,6 +93,11 @@ def generate_launch_description():
         "use_sim_time",
         default_value="true",
         description="Use simulation time",
+    )
+    declare_rviz = DeclareLaunchArgument(
+        "rviz",
+        default_value="true",
+        description="Start RViz in rosbag replay helper launch",
     )
     declare_perception_mode = DeclareLaunchArgument(
         "perception_mode",
@@ -138,6 +144,7 @@ def generate_launch_description():
         launch_arguments={
             "bag": bag_path,
             "use_sim_time": use_sim_time,
+            "rviz": rviz,
             "perception_mode": perception_mode,
         }.items(),
     )
@@ -173,6 +180,7 @@ def generate_launch_description():
             UnsetEnvironmentVariable("FASTRTPS_DEFAULT_PROFILES_FILE"),
             declare_bag,
             declare_use_sim_time,
+            declare_rviz,
             declare_perception_mode,
             declare_run_scene_discovery,
             declare_run_refine_block,
