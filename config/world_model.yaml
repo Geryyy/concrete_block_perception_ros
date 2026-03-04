@@ -14,6 +14,10 @@ world_model_node:
     min_points: 50
     world_model:
       object_timeout_s: 10.0
+      association_max_distance_m: 0.45
+      association_max_age_s: 20.0
+      min_update_confidence: 0.25
+      refine_target_max_distance_m: 1.2
 
     # ----------------------------------
     # Registration gating

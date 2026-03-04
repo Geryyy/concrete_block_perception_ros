@@ -58,6 +58,14 @@ const char * perceptionModeToString(PerceptionMode mode);
 OneShotMode parseOneShotMode(const std::string & mode);
 const char * oneShotModeToString(OneShotMode mode);
 
+bool isValidTaskTransition(int32_t from_status, int32_t to_status);
+const char * taskStatusToString(int32_t status);
+bool shouldAssociateByDistance(
+  double distance_m,
+  double max_distance_m,
+  double confidence,
+  double min_confidence);
+
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
   const std::vector<concrete_block_perception::msg::Block> & blocks,

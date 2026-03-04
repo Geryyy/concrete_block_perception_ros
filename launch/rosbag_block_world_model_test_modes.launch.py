@@ -4,6 +4,7 @@ from launch.actions import (
     ExecuteProcess,
     IncludeLaunchDescription,
     TimerAction,
+    UnsetEnvironmentVariable,
 )
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathSubstitution
@@ -109,12 +110,12 @@ def generate_launch_description():
     )
     declare_run_set_task_move = DeclareLaunchArgument(
         "run_set_task_move",
-        default_value="false",
+        default_value="true",
         description="Set a world-model block to TASK_MOVE at 13s",
     )
     declare_run_refine_grasped = DeclareLaunchArgument(
         "run_refine_grasped",
-        default_value="false",
+        default_value="true",
         description="Trigger one-shot REFINE_GRASPED call",
     )
     declare_refine_block_id = DeclareLaunchArgument(
@@ -154,7 +155,7 @@ def generate_launch_description():
         enable_when=run_refine_block,
     )
     set_task_move_call = _set_block_task_status_call(
-        period_s=13.0,
+        period_s=16.0,
         block_id=task_move_block_id,
         task_status=2,  # Block.TASK_MOVE
         enable_when=run_set_task_move,
@@ -168,6 +169,8 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            # Avoid Fast DDS XML parser noise when this env var is present but empty.
+            UnsetEnvironmentVariable("FASTRTPS_DEFAULT_PROFILES_FILE"),
             declare_bag,
             declare_use_sim_time,
             declare_perception_mode,

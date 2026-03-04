@@ -105,6 +105,7 @@ def generate_launch_description():
                         "topic_output": "/seyond_points",
                     }
                 ],
+                arguments=["--ros-args", "--log-level", "WARN"],
             ),
             # IncludeLaunchDescription(
             #     PathSubstitution(FindPackageShare("foxglove_bridge"))

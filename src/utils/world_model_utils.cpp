@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <utility>
 
 #include "concrete_block_perception/utils/world_model_utils.hpp"
@@ -153,6 +154,67 @@ const char * oneShotModeToString(OneShotMode mode)
     default:
       return "NONE";
   }
+}
+
+const char * taskStatusToString(int32_t status)
+{
+  switch (status) {
+    case Block::TASK_FREE:
+      return "TASK_FREE";
+    case Block::TASK_MOVE:
+      return "TASK_MOVE";
+    case Block::TASK_PLACED:
+      return "TASK_PLACED";
+    case Block::TASK_REMOVED:
+      return "TASK_REMOVED";
+    case Block::TASK_UNKNOWN:
+    default:
+      return "TASK_UNKNOWN";
+  }
+}
+
+bool isValidTaskTransition(int32_t from_status, int32_t to_status)
+{
+  if (from_status == to_status) {
+    return true;
+  }
+  if (from_status == Block::TASK_UNKNOWN) {
+    return true;
+  }
+
+  switch (from_status) {
+    case Block::TASK_FREE:
+      return to_status == Block::TASK_MOVE || to_status == Block::TASK_REMOVED;
+    case Block::TASK_MOVE:
+      return to_status == Block::TASK_FREE || to_status == Block::TASK_PLACED;
+    case Block::TASK_PLACED:
+      return to_status == Block::TASK_MOVE || to_status == Block::TASK_REMOVED;
+    case Block::TASK_REMOVED:
+      return false;
+    case Block::TASK_UNKNOWN:
+    default:
+      return true;
+  }
+}
+
+bool shouldAssociateByDistance(
+  double distance_m,
+  double max_distance_m,
+  double confidence,
+  double min_confidence)
+{
+  if (!std::isfinite(distance_m) || !std::isfinite(max_distance_m) ||
+    !std::isfinite(confidence) || !std::isfinite(min_confidence))
+  {
+    return false;
+  }
+  if (distance_m < 0.0 || max_distance_m <= 0.0) {
+    return false;
+  }
+  if (confidence < min_confidence) {
+    return false;
+  }
+  return distance_m <= max_distance_m;
 }
 
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
