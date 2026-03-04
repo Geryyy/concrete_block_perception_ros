@@ -46,6 +46,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RegisterBlock.srv"
   "srv/TrackDetections.srv"
   "srv/SetPerceptionMode.srv"
+  "srv/SetBlockTaskStatus.srv"
   "srv/GetCoarseBlocks.srv"
   "srv/RunPoseEstimation.srv"
   "msg/Block.msg"
@@ -202,10 +203,29 @@ install(DIRECTORY
 # Testing
 # ------------------------------------------------------------
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(test_world_model_utils
+    test/test_world_model_utils.cpp
+    src/utils/world_model_utils.cpp
+  )
+  if(TARGET test_world_model_utils)
+    target_include_directories(test_world_model_utils PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(test_world_model_utils
+      ${cpp_typesupport_target}
+    )
+    ament_target_dependencies(test_world_model_utils
+      std_msgs
+      visualization_msgs
+    )
+  endif()
 endif()
 
 ament_package()

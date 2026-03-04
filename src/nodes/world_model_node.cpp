@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <filesystem>
 #include <future>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -25,6 +27,7 @@
 #include "concrete_block_perception/msg/block_array.hpp"
 #include "concrete_block_perception/srv/get_coarse_blocks.hpp"
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
+#include "concrete_block_perception/srv/set_block_task_status.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
@@ -41,6 +44,7 @@ class WorldModelNode : public rclcpp::Node
 {
   using SegmentSrv = ros2_yolos_cpp::srv::SegmentImage;
   using SetModeSrv = concrete_block_perception::srv::SetPerceptionMode;
+  using SetBlockTaskStatusSrv = concrete_block_perception::srv::SetBlockTaskStatus;
   using GetCoarseSrv = concrete_block_perception::srv::GetCoarseBlocks;
   using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
   using RegisterBlock = concrete_block_perception::action::RegisterBlock;
@@ -76,6 +80,14 @@ public:
     world_frame_ = declare_parameter<std::string>("world_frame", "world");
     max_sync_delta_s_ = declare_parameter<double>("sync.max_delta_s", 0.06);
     object_timeout_s_ = declare_parameter<double>("world_model.object_timeout_s", 10.0);
+    association_max_distance_m_ =
+      declare_parameter<double>("world_model.association_max_distance_m", 0.45);
+    association_max_age_s_ =
+      declare_parameter<double>("world_model.association_max_age_s", 20.0);
+    min_update_confidence_ =
+      declare_parameter<double>("world_model.min_update_confidence", 0.25);
+    refine_target_max_distance_m_ =
+      declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
     debug_detection_overlay_enabled_ = declare_parameter<bool>("debug.publish_detection_overlay", true);
     perf_log_timing_enabled_ = declare_parameter<bool>("perf.log_timing", true);
     perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
@@ -158,6 +170,14 @@ public:
       rmw_qos_profile_services_default,
       run_pose_cb_group_);
 
+    set_block_task_status_srv_ = create_service<SetBlockTaskStatusSrv>(
+      "~/set_block_task_status",
+      std::bind(
+        &WorldModelNode::handleSetBlockTaskStatus,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     marker_refresh_timer_ = create_wall_timer(
       std::chrono::duration<double>(marker_refresh_period_s),
       [this]() {
@@ -227,6 +247,104 @@ private:
       }
     }
     return best_id;
+  }
+
+  std::string nextWorldBlockId()
+  {
+    world_block_counter_++;
+    return "wm_block_" + std::to_string(world_block_counter_);
+  }
+
+  static double blockDistance(const Block & a, const Block & b)
+  {
+    const double dx = a.pose.position.x - b.pose.position.x;
+    const double dy = a.pose.position.y - b.pose.position.y;
+    const double dz = a.pose.position.z - b.pose.position.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  bool upsertRegisteredBlock(
+    Block incoming,
+    const OneShotRequest & run_request,
+    const std_msgs::msg::Header & header,
+    std::string & assigned_id,
+    std::string & reason)
+  {
+    const rclcpp::Time now_stamp(header.stamp, get_clock()->get_clock_type());
+    if (incoming.confidence < min_update_confidence_) {
+      reason = "confidence below min_update_confidence";
+      return false;
+    }
+
+    std::string forced_id;
+    if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
+      run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
+      !run_request.target_block_id.empty())
+    {
+      forced_id = run_request.target_block_id;
+    }
+
+    const Block * best_match = nullptr;
+    double best_dist = std::numeric_limits<double>::infinity();
+    std::string best_id;
+
+    for (const auto & kv : persistent_world_) {
+      const auto & existing = kv.second;
+      const rclcpp::Time seen(existing.last_seen, get_clock()->get_clock_type());
+      const double age_s = (now_stamp - seen).seconds();
+      if (age_s > association_max_age_s_) {
+        continue;
+      }
+
+      const double dist = blockDistance(incoming, existing);
+      if (!cbpwm::shouldAssociateByDistance(
+          dist, association_max_distance_m_, incoming.confidence, min_update_confidence_))
+      {
+        continue;
+      }
+      if (dist < best_dist) {
+        best_dist = dist;
+        best_match = &existing;
+        best_id = kv.first;
+      }
+    }
+
+    if (!forced_id.empty()) {
+      assigned_id = forced_id;
+    } else if (best_match != nullptr) {
+      assigned_id = best_id;
+    } else {
+      assigned_id = nextWorldBlockId();
+    }
+
+    auto it = persistent_world_.find(assigned_id);
+    if (it != persistent_world_.end()) {
+      const auto & previous = it->second;
+      const rclcpp::Time prev_stamp(previous.last_seen, get_clock()->get_clock_type());
+      const rclcpp::Time incoming_stamp(incoming.last_seen, get_clock()->get_clock_type());
+      if (incoming_stamp < prev_stamp) {
+        reason = "stale update (incoming older than stored state)";
+        return false;
+      }
+
+      if (!cbpwm::isValidTaskTransition(previous.task_status, incoming.task_status)) {
+        reason = std::string("invalid task transition ") +
+          cbpwm::taskStatusToString(previous.task_status) + " -> " +
+          cbpwm::taskStatusToString(incoming.task_status);
+        return false;
+      }
+
+      if (previous.task_status != Block::TASK_UNKNOWN) {
+        incoming.task_status = previous.task_status;
+      }
+    } else {
+      incoming.task_status = Block::TASK_FREE;
+    }
+
+    incoming.id = assigned_id;
+    incoming.pose_status = Block::POSE_PRECISE;
+    persistent_world_[assigned_id] = incoming;
+    return true;
   }
 
   void resetBusy()
@@ -461,6 +579,72 @@ private:
       response->blocks.header.stamp.nanosec);
   }
 
+  static bool isKnownTaskStatus(int32_t task_status)
+  {
+    return task_status == Block::TASK_UNKNOWN ||
+           task_status == Block::TASK_FREE ||
+           task_status == Block::TASK_MOVE ||
+           task_status == Block::TASK_PLACED ||
+           task_status == Block::TASK_REMOVED;
+  }
+
+  void handleSetBlockTaskStatus(
+    const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
+    std::shared_ptr<SetBlockTaskStatusSrv::Response> response)
+  {
+    const std::string block_id = request->block_id;
+    const int32_t target_task_status = request->task_status;
+
+    if (block_id.empty()) {
+      response->success = false;
+      response->message = "block_id must not be empty.";
+      return;
+    }
+    if (!isKnownTaskStatus(target_task_status)) {
+      response->success = false;
+      response->message = "Unsupported task_status: " + std::to_string(target_task_status);
+      return;
+    }
+
+    std_msgs::msg::Header publish_header;
+    publish_header.stamp = now();
+    {
+      const auto snapshot = latestWorldSnapshot();
+      publish_header.frame_id = snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(block_id);
+      if (it == persistent_world_.end()) {
+        response->success = false;
+        response->message = "Unknown block_id: " + block_id;
+        return;
+      }
+
+      const int32_t prev_task_status = it->second.task_status;
+      if (!cbpwm::isValidTaskTransition(prev_task_status, target_task_status)) {
+        response->success = false;
+        response->message =
+          std::string("Invalid task transition: ") +
+          cbpwm::taskStatusToString(prev_task_status) + " -> " +
+          cbpwm::taskStatusToString(target_task_status);
+        return;
+      }
+
+      it->second.task_status = target_task_status;
+      // Keep block alive and reflect semantic state change immediately.
+      it->second.last_seen = publish_header.stamp;
+    }
+
+    publishPersistentWorld(publish_header);
+
+    response->success = true;
+    response->message =
+      std::string("Updated block '") + block_id + "' task_status to " +
+      cbpwm::taskStatusToString(target_task_status);
+  }
+
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks)
   {
     auto marker_header = header;
@@ -693,6 +877,7 @@ private:
             if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
               run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
               !run_request.target_block_id.empty() &&
+              run_request.target_block_id.rfind("block_", 0) == 0 &&
               det_id != run_request.target_block_id)
             {
               continue;
@@ -754,8 +939,89 @@ private:
 
           const auto t_reg_start = std::chrono::steady_clock::now();
           size_t registrations_ok = 0;
-          {
+          const bool targeted_refine =
+            (run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
+            run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
+            !run_request.target_block_id.empty() &&
+            run_request.target_block_id.rfind("block_", 0) != 0;
+
+          bool have_expected_target = false;
+          Block expected_target;
+          if (targeted_refine) {
             std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+            const auto it = persistent_world_.find(run_request.target_block_id);
+            if (it != persistent_world_.end()) {
+              expected_target = it->second;
+              have_expected_target = true;
+            }
+          }
+
+          if (targeted_refine && have_expected_target) {
+            Block best_block;
+            bool best_valid = false;
+            double best_dist = std::numeric_limits<double>::infinity();
+
+            for (const auto & candidate : candidates) {
+              Block block;
+              std::string reason;
+              const bool ok = runRegistrationSync(
+                candidate.first,
+                candidate.second,
+                *cloud,
+                cloud->header,
+                run_request.registration_timeout_s,
+                block,
+                reason);
+
+              if (!ok) {
+                RCLCPP_WARN(
+                  get_logger(),
+                  "Registration rejected for block_%u: %s",
+                  candidate.first,
+                  reason.c_str());
+                continue;
+              }
+
+              const double dist = blockDistance(block, expected_target);
+              if (dist < best_dist) {
+                best_dist = dist;
+                best_block = block;
+                best_valid = true;
+              }
+            }
+
+            if (best_valid && best_dist <= refine_target_max_distance_m_) {
+              std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+              std::string assigned_id;
+              std::string upsert_reason;
+              const bool upsert_ok = upsertRegisteredBlock(
+                best_block,
+                run_request,
+                cloud->header,
+                assigned_id,
+                upsert_reason);
+              if (upsert_ok) {
+                ++registrations_ok;
+                RCLCPP_INFO(
+                  get_logger(),
+                  "Targeted refine accepted: target=%s assigned=%s dist=%.3f m",
+                  run_request.target_block_id.c_str(),
+                  assigned_id.c_str(),
+                  best_dist);
+              } else {
+                RCLCPP_WARN(
+                  get_logger(),
+                  "Targeted refine rejected after association checks: %s",
+                  upsert_reason.c_str());
+              }
+            } else {
+              RCLCPP_WARN(
+                get_logger(),
+                "Targeted refine failed for '%s': no candidate within %.3f m of expected pose.",
+                run_request.target_block_id.c_str(),
+                refine_target_max_distance_m_);
+            }
+          } else {
             for (const auto & candidate : candidates) {
               Block block;
               std::string reason;
@@ -769,9 +1035,29 @@ private:
                 reason);
 
               if (ok) {
-                persistent_world_[block.id] = block;
-                ++registrations_ok;
-                RCLCPP_INFO(get_logger(), "Registration accepted for %s", block.id.c_str());
+                std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+                std::string assigned_id;
+                std::string upsert_reason;
+                const bool upsert_ok = upsertRegisteredBlock(
+                  block,
+                  run_request,
+                  cloud->header,
+                  assigned_id,
+                  upsert_reason);
+                if (upsert_ok) {
+                  ++registrations_ok;
+                  RCLCPP_INFO(
+                    get_logger(),
+                    "Registration accepted and associated: incoming=%s assigned=%s",
+                    block.id.c_str(),
+                    assigned_id.c_str());
+                } else {
+                  RCLCPP_WARN(
+                    get_logger(),
+                    "Registration rejected after association checks for %s: %s",
+                    block.id.c_str(),
+                    upsert_reason.c_str());
+                }
               } else {
                 RCLCPP_WARN(
                   get_logger(),
@@ -818,6 +1104,7 @@ private:
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
+  rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
   rclcpp::CallbackGroup::SharedPtr run_pose_cb_group_;
@@ -848,9 +1135,14 @@ private:
   std::string world_frame_{"world"};
   double max_sync_delta_s_{0.06};
   double object_timeout_s_{10.0};
+  double association_max_distance_m_{0.45};
+  double association_max_age_s_{20.0};
+  double min_update_confidence_{0.25};
+  double refine_target_max_distance_m_{1.2};
   bool debug_detection_overlay_enabled_{true};
   bool perf_log_timing_enabled_{true};
   int perf_log_every_n_frames_{20};
+  uint64_t world_block_counter_{0};
 
   std::mutex perf_mutex_;
   uint64_t perf_timing_count_{0};
