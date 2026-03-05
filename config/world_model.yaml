@@ -51,3 +51,18 @@ world_model_node:
     # Object / template selection
     # ----------------------------------
     object_class: "concrete_block"
+
+    # ----------------------------------
+    # REFINE_GRASPED robust mode (FK + ROI)
+    # ----------------------------------
+    refine_grasped:
+      use_fk_roi: true
+      tcp_frame: "elastic/K8_tool_center_point"
+      camera_frame: "seyond"
+      camera_info_topic: "/zed2i/warped/left/camera_info"
+      tcp_to_block:
+        xyz: [0.0, 0.0, 0.0]
+        rpy: [0.0, 0.0, 0.0]
+      roi_size_m: [0.60, 0.40]
+      min_depth_m: 0.5
+      max_depth_m: 30.0

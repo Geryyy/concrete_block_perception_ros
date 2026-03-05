@@ -12,14 +12,19 @@
 #include <vector>
 
 #include <cv_bridge/cv_bridge.h>
+#include <Eigen/Dense>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tf2/exceptions.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "concrete_block_perception/action/register_block.hpp"
@@ -63,6 +68,17 @@ class WorldModelNode : public rclcpp::Node
     double registration_timeout_s{3.0};
   };
 
+  struct CameraIntrinsics
+  {
+    bool valid{false};
+    double fx{0.0};
+    double fy{0.0};
+    double cx{0.0};
+    double cy{0.0};
+    uint32_t width{0};
+    uint32_t height{0};
+  };
+
 public:
   WorldModelNode()
   : Node("block_world_model_node")
@@ -93,6 +109,25 @@ public:
     perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
     const double marker_refresh_period_s =
       declare_parameter<double>("world_model.marker_refresh_period_s", 0.5);
+    refine_grasped_use_fk_roi_ = declare_parameter<bool>("refine_grasped.use_fk_roi", true);
+    refine_grasped_tcp_frame_ =
+      declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
+    refine_grasped_camera_frame_ =
+      declare_parameter<std::string>("refine_grasped.camera_frame", "seyond");
+    refine_grasped_camera_info_topic_ =
+      declare_parameter<std::string>(
+      "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
+    refine_grasped_min_depth_m_ =
+      declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
+    refine_grasped_max_depth_m_ =
+      declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
+
+    const auto tcp_to_block_xyz =
+      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
+    const auto tcp_to_block_rpy =
+      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
+    const auto roi_size_m =
+      declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
 
     // Keep for launch-file compatibility; no longer used in one-shot flow.
     (void)declare_parameter<std::string>("calib_yaml", "");
@@ -104,6 +139,27 @@ public:
     if (debug_detection_overlay_enabled_) {
       det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>("debug/detection_overlay", 1);
     }
+    camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
+      refine_grasped_camera_info_topic_,
+      rclcpp::SensorDataQoS(),
+      std::bind(&WorldModelNode::cameraInfoCallback, this, std::placeholders::_1));
+
+    const double tx = (tcp_to_block_xyz.size() >= 1) ? tcp_to_block_xyz[0] : 0.0;
+    const double ty = (tcp_to_block_xyz.size() >= 2) ? tcp_to_block_xyz[1] : 0.0;
+    const double tz = (tcp_to_block_xyz.size() >= 3) ? tcp_to_block_xyz[2] : 0.0;
+    const double rr = (tcp_to_block_rpy.size() >= 1) ? tcp_to_block_rpy[0] : 0.0;
+    const double rp = (tcp_to_block_rpy.size() >= 2) ? tcp_to_block_rpy[1] : 0.0;
+    const double ry = (tcp_to_block_rpy.size() >= 3) ? tcp_to_block_rpy[2] : 0.0;
+    const Eigen::Matrix3d rot_tcp_block =
+      (Eigen::AngleAxisd(ry, Eigen::Vector3d::UnitZ()) *
+      Eigen::AngleAxisd(rp, Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(rr, Eigen::Vector3d::UnitX())).toRotationMatrix();
+    T_tcp_block_ = Eigen::Matrix4d::Identity();
+    T_tcp_block_.block<3, 3>(0, 0) = rot_tcp_block;
+    T_tcp_block_.block<3, 1>(0, 3) = Eigen::Vector3d(tx, ty, tz);
+
+    roi_size_x_m_ = (roi_size_m.size() >= 1) ? roi_size_m[0] : 0.60;
+    roi_size_y_m_ = (roi_size_m.size() >= 2) ? roi_size_m[1] : 0.40;
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -119,6 +175,8 @@ public:
         this,
         std::placeholders::_1,
         std::placeholders::_2));
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     segment_client_ = create_client<SegmentSrv>("/yolos_segmentor_service/segment");
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
@@ -192,6 +250,16 @@ public:
       "WorldModelNode ready | pipeline_mode=%s | perception_mode=%s",
       cbpwm::pipelineModeToString(pipeline_mode_),
       cbpwm::perceptionModeToString(perception_mode_));
+    if (refine_grasped_use_fk_roi_) {
+      WM_LOG(
+        get_logger(),
+        "REFINE_GRASPED FK+ROI enabled | tcp_frame=%s camera_frame=%s camera_info_topic=%s roi_size=[%.2f, %.2f]m",
+        refine_grasped_tcp_frame_.c_str(),
+        refine_grasped_camera_frame_.c_str(),
+        refine_grasped_camera_info_topic_.c_str(),
+        roi_size_x_m_,
+        roi_size_y_m_);
+    }
   }
 
 private:
@@ -452,6 +520,260 @@ private:
     out_block.pose_status = Block::POSE_PRECISE;
     out_block.task_status = Block::TASK_FREE;
     return true;
+  }
+
+  static Eigen::Matrix4d transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
+  {
+    Eigen::Quaterniond q(
+      tf.transform.rotation.w,
+      tf.transform.rotation.x,
+      tf.transform.rotation.y,
+      tf.transform.rotation.z);
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();
+    T(0, 3) = tf.transform.translation.x;
+    T(1, 3) = tf.transform.translation.y;
+    T(2, 3) = tf.transform.translation.z;
+    return T;
+  }
+
+  void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+  {
+    if (msg->k.size() < 9) {
+      return;
+    }
+    CameraIntrinsics intr;
+    intr.fx = msg->k[0];
+    intr.fy = msg->k[4];
+    intr.cx = msg->k[2];
+    intr.cy = msg->k[5];
+    intr.width = msg->width;
+    intr.height = msg->height;
+    intr.valid = intr.fx > 0.0 && intr.fy > 0.0;
+
+    if (!intr.valid) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(camera_info_mutex_);
+    camera_intrinsics_ = intr;
+  }
+
+  bool lookupPredictedGraspedPose(
+    const std_msgs::msg::Header & header,
+    Eigen::Vector3d & p_camera,
+    std::string & reason)
+  {
+    if (!tf_buffer_) {
+      reason = "TF buffer not initialized";
+      return false;
+    }
+
+    try {
+      const auto tf_world_tcp = tf_buffer_->lookupTransform(
+        world_frame_,
+        refine_grasped_tcp_frame_,
+        rclcpp::Time(header.stamp),
+        rclcpp::Duration::from_seconds(0.2));
+      const auto tf_camera_world = tf_buffer_->lookupTransform(
+        refine_grasped_camera_frame_,
+        world_frame_,
+        rclcpp::Time(header.stamp),
+        rclcpp::Duration::from_seconds(0.2));
+
+      const Eigen::Matrix4d T_world_tcp = transformToEigen(tf_world_tcp);
+      const Eigen::Matrix4d T_camera_world = transformToEigen(tf_camera_world);
+      const Eigen::Matrix4d T_world_block_pred = T_world_tcp * T_tcp_block_;
+      const Eigen::Vector4d p_block_world_h(
+        T_world_block_pred(0, 3),
+        T_world_block_pred(1, 3),
+        T_world_block_pred(2, 3),
+        1.0);
+      const Eigen::Vector4d p_block_camera_h = T_camera_world * p_block_world_h;
+
+      p_camera = p_block_camera_h.head<3>();
+      return true;
+    } catch (const tf2::TransformException & ex) {
+      reason = std::string("TF lookup failed: ") + ex.what();
+      return false;
+    }
+  }
+
+  bool buildRoiMaskFromPrediction(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const Eigen::Vector3d & p_camera,
+    cv::Mat & roi_mask,
+    cv::Rect & roi_rect,
+    std::string & reason)
+  {
+    CameraIntrinsics intr;
+    {
+      std::lock_guard<std::mutex> lock(camera_info_mutex_);
+      intr = camera_intrinsics_;
+    }
+    if (!intr.valid) {
+      reason = "camera_info not received or invalid intrinsics";
+      return false;
+    }
+
+    const double z = p_camera.z();
+    if (!std::isfinite(z) || z < refine_grasped_min_depth_m_ || z > refine_grasped_max_depth_m_) {
+      reason = "predicted block depth out of bounds: z=" + std::to_string(z);
+      return false;
+    }
+
+    const double u = (intr.fx * p_camera.x() / z) + intr.cx;
+    const double v = (intr.fy * p_camera.y() / z) + intr.cy;
+    if (!std::isfinite(u) || !std::isfinite(v)) {
+      reason = "projected image point is invalid";
+      return false;
+    }
+
+    const int roi_w_px = std::max(1, static_cast<int>(std::lround(intr.fx * roi_size_x_m_ / z)));
+    const int roi_h_px = std::max(1, static_cast<int>(std::lround(intr.fy * roi_size_y_m_ / z)));
+    cv::Rect requested_roi(
+      static_cast<int>(std::lround(u)) - roi_w_px / 2,
+      static_cast<int>(std::lround(v)) - roi_h_px / 2,
+      roi_w_px,
+      roi_h_px);
+    const cv::Rect image_rect(0, 0, static_cast<int>(image->width), static_cast<int>(image->height));
+    roi_rect = requested_roi & image_rect;
+    if (roi_rect.width < 2 || roi_rect.height < 2) {
+      reason = "ROI outside image or too small after clamping";
+      return false;
+    }
+
+    roi_mask = cv::Mat::zeros(image_rect.height, image_rect.width, CV_8UC1);
+    cv::rectangle(roi_mask, roi_rect, cv::Scalar(255), cv::FILLED);
+    return true;
+  }
+
+  void publishRoiDebugOverlay(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const cv::Rect & roi_rect)
+  {
+    if (!det_debug_pub_) {
+      return;
+    }
+    cv::Mat img = toCvBgr(*image);
+    cv::rectangle(img, roi_rect, cv::Scalar(0, 0, 255), 2);
+    cv::circle(
+      img,
+      cv::Point(roi_rect.x + roi_rect.width / 2, roi_rect.y + roi_rect.height / 2),
+      4,
+      cv::Scalar(0, 0, 255),
+      cv::FILLED);
+    auto out = cv_bridge::CvImage(image->header, "bgr8", img).toImageMsg();
+    det_debug_pub_->publish(*out);
+  }
+
+  void processRefineGraspedWithFkRoi(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const OneShotRequest & run_request,
+    const std::chrono::steady_clock::time_point & t_start)
+  {
+    if (!action_client_->action_server_is_ready()) {
+      completeOneShotRequest(run_request.sequence, false, "Registration action unavailable.");
+      resetBusy();
+      return;
+    }
+
+    Eigen::Vector3d p_camera = Eigen::Vector3d::Zero();
+    std::string reason;
+    if (!lookupPredictedGraspedPose(cloud->header, p_camera, reason)) {
+      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_GRASPED FK prediction failed: " + reason);
+      resetBusy();
+      return;
+    }
+
+    cv::Mat roi_mask;
+    cv::Rect roi_rect;
+    if (!buildRoiMaskFromPrediction(image, p_camera, roi_mask, roi_rect, reason)) {
+      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_GRASPED ROI construction failed: " + reason);
+      resetBusy();
+      return;
+    }
+
+    if (debug_detection_overlay_enabled_ && det_debug_pub_) {
+      publishRoiDebugOverlay(image, roi_rect);
+    }
+
+    auto roi_mask_msg = cv_bridge::CvImage(image->header, "mono8", roi_mask).toImageMsg();
+    Block block;
+    bool registration_ok = false;
+    std::string reg_reason;
+    const auto t_reg_start = std::chrono::steady_clock::now();
+    registration_ok = runRegistrationSync(
+      1U,
+      *roi_mask_msg,
+      *cloud,
+      cloud->header,
+      run_request.registration_timeout_s,
+      block,
+      reg_reason);
+    const auto t_reg_end = std::chrono::steady_clock::now();
+
+    size_t registrations_ok = 0;
+    if (registration_ok) {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      std::string assigned_id;
+      std::string upsert_reason;
+      const bool upsert_ok = upsertRegisteredBlock(
+        block,
+        run_request,
+        cloud->header,
+        assigned_id,
+        upsert_reason);
+      if (upsert_ok) {
+        ++registrations_ok;
+        RCLCPP_INFO(
+          get_logger(),
+          "REFINE_GRASPED FK+ROI accepted: target=%s assigned=%s roi=[x=%d y=%d w=%d h=%d]",
+          run_request.target_block_id.c_str(),
+          assigned_id.c_str(),
+          roi_rect.x,
+          roi_rect.y,
+          roi_rect.width,
+          roi_rect.height);
+      } else {
+        RCLCPP_WARN(
+          get_logger(),
+          "REFINE_GRASPED FK+ROI rejected after association checks: %s",
+          upsert_reason.c_str());
+        reg_reason = upsert_reason;
+      }
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "REFINE_GRASPED FK+ROI registration failed: %s",
+        reg_reason.c_str());
+    }
+
+    const auto reg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      t_reg_end - t_reg_start).count();
+    const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      t_reg_end - t_start).count();
+    recordTiming(0, 0, reg_ms, total_ms);
+
+    publishPersistentWorld(cloud->header);
+    completeOneShotRequest(
+      run_request.sequence,
+      registrations_ok > 0,
+      registrations_ok > 0 ?
+      ("Pose estimation finished (mode=REFINE_GRASPED_FK_ROI, registration_candidates=1, registrations=1).") :
+      ("Pose estimation finished (mode=REFINE_GRASPED_FK_ROI, registration_candidates=1, registrations=0, reason=" +
+      reg_reason + ")."));
+    resetBusy();
   }
 
   void completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
@@ -813,6 +1135,11 @@ private:
       return;
     }
 
+    if (run_request.mode == cbpwm::OneShotMode::kRefineGrasped && refine_grasped_use_fk_roi_) {
+      processRefineGraspedWithFkRoi(image, cloud, run_request, t_start);
+      return;
+    }
+
     if (!segment_client_->service_is_ready()) {
       RCLCPP_WARN(get_logger(), "Segmentation service unavailable.");
       resetBusy();
@@ -1115,6 +1442,7 @@ private:
   message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_;
   message_filters::Subscriber<sensor_msgs::msg::PointCloud2> cloud_sub_;
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
@@ -1173,6 +1501,20 @@ private:
   uint64_t one_shot_done_sequence_{0};
   bool one_shot_last_success_{false};
   std::string one_shot_last_message_;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::mutex camera_info_mutex_;
+  CameraIntrinsics camera_intrinsics_;
+  bool refine_grasped_use_fk_roi_{true};
+  std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
+  std::string refine_grasped_camera_frame_{"seyond"};
+  std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};
+  Eigen::Matrix4d T_tcp_block_{Eigen::Matrix4d::Identity()};
+  double roi_size_x_m_{0.60};
+  double roi_size_y_m_{0.40};
+  double refine_grasped_min_depth_m_{0.5};
+  double refine_grasped_max_depth_m_{30.0};
 
 };
 
