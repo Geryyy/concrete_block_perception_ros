@@ -598,11 +598,13 @@ private:
     if (block_id.empty()) {
       response->success = false;
       response->message = "block_id must not be empty.";
+      RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
       return;
     }
     if (!isKnownTaskStatus(target_task_status)) {
       response->success = false;
       response->message = "Unsupported task_status: " + std::to_string(target_task_status);
+      RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
       return;
     }
 
@@ -613,22 +615,29 @@ private:
       publish_header.frame_id = snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
     }
 
+    int32_t prev_task_status = Block::TASK_UNKNOWN;
     {
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
       const auto it = persistent_world_.find(block_id);
       if (it == persistent_world_.end()) {
         response->success = false;
         response->message = "Unknown block_id: " + block_id;
+        RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
         return;
       }
 
-      const int32_t prev_task_status = it->second.task_status;
+      prev_task_status = it->second.task_status;
       if (!cbpwm::isValidTaskTransition(prev_task_status, target_task_status)) {
         response->success = false;
         response->message =
           std::string("Invalid task transition: ") +
           cbpwm::taskStatusToString(prev_task_status) + " -> " +
           cbpwm::taskStatusToString(target_task_status);
+        RCLCPP_WARN(
+          get_logger(),
+          "SetBlockTaskStatus rejected for block '%s': %s",
+          block_id.c_str(),
+          response->message.c_str());
         return;
       }
 
@@ -643,6 +652,12 @@ private:
     response->message =
       std::string("Updated block '") + block_id + "' task_status to " +
       cbpwm::taskStatusToString(target_task_status);
+    RCLCPP_INFO(
+      get_logger(),
+      "SetBlockTaskStatus applied: block '%s' %s -> %s",
+      block_id.c_str(),
+      cbpwm::taskStatusToString(prev_task_status),
+      cbpwm::taskStatusToString(target_task_status));
   }
 
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks)

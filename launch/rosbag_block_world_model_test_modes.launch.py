@@ -86,7 +86,14 @@ def generate_launch_description():
 
     declare_bag = DeclareLaunchArgument(
         "bag",
-        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
+        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_2_placement_rotated",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_3_pickup_rotated",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_4_placement_far",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_5_stacking",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_6_stacking_rotated",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_7_palettes",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_8_palettes",
         description="Path to rosbag to replay",
     )
     declare_use_sim_time = DeclareLaunchArgument(
@@ -116,12 +123,12 @@ def generate_launch_description():
     )
     declare_run_set_task_move = DeclareLaunchArgument(
         "run_set_task_move",
-        default_value="true",
+        default_value="false",
         description="Set a world-model block to TASK_MOVE at 13s",
     )
     declare_run_refine_grasped = DeclareLaunchArgument(
         "run_refine_grasped",
-        default_value="true",
+        default_value="false",
         description="Trigger one-shot REFINE_GRASPED call",
     )
     declare_refine_block_id = DeclareLaunchArgument(

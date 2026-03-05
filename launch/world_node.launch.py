@@ -64,6 +64,10 @@ def generate_launch_description():
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
                 ],
+                additional_env={
+                    "RCUTILS_COLORIZED_OUTPUT": "1",
+                    "RCUTILS_CONSOLE_OUTPUT_FORMAT": "\033[33m[{name}] [{severity}] {message}\033[0m",
+                },
                 output="screen",
             ),
         ]
