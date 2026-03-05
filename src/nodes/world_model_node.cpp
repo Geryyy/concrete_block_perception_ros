@@ -79,6 +79,15 @@ class WorldModelNode : public rclcpp::Node
     uint32_t height{0};
   };
 
+  struct PoseFusionConfig
+  {
+    bool enabled{true};
+    std::string mode{"position_from_registration_orientation_from_fk"};
+    double max_translation_jump_m{0.35};
+    double max_z_delta_m{0.25};
+    bool debug_log{true};
+  };
+
 public:
   WorldModelNode()
   : Node("block_world_model_node")
@@ -129,6 +138,17 @@ public:
       declare_parameter<bool>("refine_grasped.segmentation_input.use_black_background", false);
     refine_grasped_blur_kernel_size_ =
       declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
+    refine_grasped_pose_fusion_.enabled =
+      declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
+    refine_grasped_pose_fusion_.mode = declare_parameter<std::string>(
+      "refine_grasped.pose_fusion.mode",
+      "position_from_registration_orientation_from_fk");
+    refine_grasped_pose_fusion_.max_translation_jump_m = declare_parameter<double>(
+      "refine_grasped.pose_fusion.max_translation_jump_m", 0.35);
+    refine_grasped_pose_fusion_.max_z_delta_m = declare_parameter<double>(
+      "refine_grasped.pose_fusion.max_z_delta_m", 0.25);
+    refine_grasped_pose_fusion_.debug_log =
+      declare_parameter<bool>("refine_grasped.pose_fusion.debug_log", true);
 
     const auto tcp_to_block_xyz =
       declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
@@ -280,6 +300,14 @@ public:
         refine_grasped_use_black_bg_ ? "black" : "blur",
         refine_grasped_blur_kernel_size_,
         refine_grasped_segmentation_timeout_s_);
+      RCLCPP_INFO(
+        get_logger(),
+        "REFINE_GRASPED pose fusion: enabled=%s mode=%s max_jump=%.3fm max_z_delta=%.3fm debug_log=%s",
+        refine_grasped_pose_fusion_.enabled ? "true" : "false",
+        refine_grasped_pose_fusion_.mode.c_str(),
+        refine_grasped_pose_fusion_.max_translation_jump_m,
+        refine_grasped_pose_fusion_.max_z_delta_m,
+        refine_grasped_pose_fusion_.debug_log ? "true" : "false");
     }
   }
 
@@ -617,7 +645,9 @@ private:
 
   bool lookupPredictedGraspedPose(
     const std_msgs::msg::Header & header,
+    Eigen::Vector3d & p_world,
     Eigen::Vector3d & p_camera,
+    Eigen::Quaterniond & q_world,
     std::string & reason)
   {
     if (!tf_buffer_) {
@@ -653,10 +683,12 @@ private:
       const Eigen::Matrix4d T_world_tcp = transformToEigen(tf_world_tcp);
       const Eigen::Matrix4d T_camera_world = transformToEigen(tf_camera_world);
       const Eigen::Matrix4d T_world_block_pred = T_world_tcp * T_tcp_block_;
+      p_world = T_world_block_pred.block<3, 1>(0, 3);
+      q_world = Eigen::Quaterniond(T_world_block_pred.block<3, 3>(0, 0)).normalized();
       const Eigen::Vector4d p_block_world_h(
-        T_world_block_pred(0, 3),
-        T_world_block_pred(1, 3),
-        T_world_block_pred(2, 3),
+        p_world.x(),
+        p_world.y(),
+        p_world.z(),
         1.0);
       const Eigen::Vector4d p_block_camera_h = T_camera_world * p_block_world_h;
 
@@ -666,6 +698,16 @@ private:
       reason = std::string("TF lookup failed: ") + ex.what();
       return false;
     }
+  }
+
+  static geometry_msgs::msg::Quaternion toGeometryMsgQuaternion(const Eigen::Quaterniond & q)
+  {
+    geometry_msgs::msg::Quaternion out;
+    out.x = q.x();
+    out.y = q.y();
+    out.z = q.z();
+    out.w = q.w();
+    return out;
   }
 
   bool buildRoiMaskFromPrediction(
@@ -772,9 +814,11 @@ private:
       return;
     }
 
+    Eigen::Vector3d p_world_fk = Eigen::Vector3d::Zero();
     Eigen::Vector3d p_camera = Eigen::Vector3d::Zero();
+    Eigen::Quaterniond q_world_fk = Eigen::Quaterniond::Identity();
     std::string reason;
-    if (!lookupPredictedGraspedPose(image->header, p_camera, reason)) {
+    if (!lookupPredictedGraspedPose(image->header, p_world_fk, p_camera, q_world_fk, reason)) {
       RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
       publishPersistentWorld(cloud->header);
       completeOneShotRequest(
@@ -898,32 +942,82 @@ private:
 
     size_t registrations_ok = 0;
     if (registration_ok) {
-      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-      std::string assigned_id;
-      std::string upsert_reason;
-      const bool upsert_ok = upsertRegisteredBlock(
-        block,
-        run_request,
-        cloud->header,
-        assigned_id,
-        upsert_reason);
-      if (upsert_ok) {
-        ++registrations_ok;
-        RCLCPP_INFO(
-          get_logger(),
-          "REFINE_GRASPED FK+ROI accepted: target=%s assigned=%s roi=[x=%d y=%d w=%d h=%d]",
-          run_request.target_block_id.c_str(),
-          assigned_id.c_str(),
-          roi_rect.x,
-          roi_rect.y,
-          roi_rect.width,
-          roi_rect.height);
+      bool fusion_ok = true;
+      std::string fusion_reason;
+
+      if (refine_grasped_pose_fusion_.enabled) {
+        if (refine_grasped_pose_fusion_.mode != "position_from_registration_orientation_from_fk") {
+          fusion_ok = false;
+          fusion_reason = "unsupported pose_fusion.mode='" + refine_grasped_pose_fusion_.mode + "'";
+        } else {
+          const Eigen::Vector3d p_reg(
+            block.pose.position.x,
+            block.pose.position.y,
+            block.pose.position.z);
+          const double residual_norm = (p_reg - p_world_fk).norm();
+          const double z_delta = std::abs(p_reg.z() - p_world_fk.z());
+
+          if (residual_norm > refine_grasped_pose_fusion_.max_translation_jump_m) {
+            fusion_ok = false;
+            fusion_reason = "translation jump too large: residual=" + std::to_string(residual_norm) +
+              "m > " + std::to_string(refine_grasped_pose_fusion_.max_translation_jump_m) + "m";
+          } else if (z_delta > refine_grasped_pose_fusion_.max_z_delta_m) {
+            fusion_ok = false;
+            fusion_reason = "z jump too large: |dz|=" + std::to_string(z_delta) +
+              "m > " + std::to_string(refine_grasped_pose_fusion_.max_z_delta_m) + "m";
+          } else {
+            block.pose.orientation = toGeometryMsgQuaternion(q_world_fk);
+          }
+
+          if (refine_grasped_pose_fusion_.debug_log) {
+            RCLCPP_INFO(
+              get_logger(),
+              "REFINE_GRASPED pose fusion: source=FK_ORIENTATION fk_pos=[%.3f %.3f %.3f] reg_pos=[%.3f %.3f %.3f] fused_pos=[%.3f %.3f %.3f] residual=%.3f z_delta=%.3f gate=%s",
+              p_world_fk.x(), p_world_fk.y(), p_world_fk.z(),
+              p_reg.x(), p_reg.y(), p_reg.z(),
+              block.pose.position.x, block.pose.position.y, block.pose.position.z,
+              residual_norm,
+              z_delta,
+              fusion_ok ? "PASS" : "FAIL");
+          }
+        }
+      }
+
+      if (!fusion_ok) {
+        RCLCPP_WARN(get_logger(), "REFINE_GRASPED pose fusion rejected: %s", fusion_reason.c_str());
+        reg_reason = fusion_reason;
+      }
+
+      if (!fusion_ok) {
+        // keep world model unchanged on fusion gate failure
       } else {
-        RCLCPP_WARN(
-          get_logger(),
-          "REFINE_GRASPED FK+ROI rejected after association checks: %s",
-          upsert_reason.c_str());
-        reg_reason = upsert_reason;
+        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+        std::string assigned_id;
+        std::string upsert_reason;
+        const bool upsert_ok = upsertRegisteredBlock(
+          block,
+          run_request,
+          cloud->header,
+          assigned_id,
+          upsert_reason);
+        if (upsert_ok) {
+          ++registrations_ok;
+          RCLCPP_INFO(
+            get_logger(),
+            "REFINE_GRASPED FK+ROI accepted: target=%s assigned=%s roi=[x=%d y=%d w=%d h=%d]",
+            run_request.target_block_id.c_str(),
+            assigned_id.c_str(),
+            roi_rect.x,
+            roi_rect.y,
+            roi_rect.width,
+            roi_rect.height);
+        } else {
+          RCLCPP_WARN(
+            get_logger(),
+            "REFINE_GRASPED FK+ROI rejected after association checks: %s",
+            upsert_reason.c_str());
+          reg_reason = upsert_reason;
+        }
       }
     } else {
       RCLCPP_WARN(
@@ -1694,6 +1788,7 @@ private:
   double refine_grasped_segmentation_timeout_s_{3.0};
   bool refine_grasped_use_black_bg_{false};
   int refine_grasped_blur_kernel_size_{31};
+  PoseFusionConfig refine_grasped_pose_fusion_;
 
 };
 

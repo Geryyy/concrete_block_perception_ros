@@ -34,7 +34,7 @@ world_model_node:
     # Input synchronization gating
     # ----------------------------------
     sync:
-      max_delta_s: 0.06
+      max_delta_s: 0.08
 
     # ----------------------------------
     # Runtime debug/perf controls
@@ -85,3 +85,12 @@ world_model_node:
         use_black_background: false
         # Gaussian blur kernel (odd integer >= 1), only used when use_black_background=false.
         blur_kernel_size: 31
+      pose_fusion:
+        # For REFINE_GRASPED:
+        # translation from registration, orientation from FK (TCP-based prediction).
+        enable: true
+        mode: "position_from_registration_orientation_from_fk"
+        # Safety gates for rejecting implausible registration jumps before world-model update.
+        max_translation_jump_m: 0.35
+        max_z_delta_m: 0.25
+        debug_log: true

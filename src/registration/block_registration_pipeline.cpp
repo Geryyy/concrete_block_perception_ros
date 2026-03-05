@@ -100,7 +100,17 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     loc_.icp_dist);
 
   if (!reg.success) {
-    RCLCPP_WARN(logger_, "Local ICP refinement failed.");
+    RCLCPP_WARN(
+      logger_,
+      "Local ICP refinement failed: reason=%s templates_total=%zu tested=%zu skipped_num_faces=%zu icp_attempts=%zu icp_positive=%zu best_fitness_seen=%.4f best_rmse_seen=%.4f",
+      reg.failure_reason.c_str(),
+      reg.templates_total,
+      reg.templates_tested,
+      reg.templates_skipped_num_faces,
+      reg.icp_attempts,
+      reg.icp_positive,
+      reg.best_fitness_seen,
+      reg.best_rmse_seen);
     return out;
   }
 
