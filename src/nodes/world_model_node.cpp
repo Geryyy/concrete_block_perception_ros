@@ -105,6 +105,8 @@ public:
     refine_target_max_distance_m_ =
       declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
     debug_detection_overlay_enabled_ = declare_parameter<bool>("debug.publish_detection_overlay", true);
+    debug_refine_grasped_roi_input_enabled_ =
+      declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
     perf_log_timing_enabled_ = declare_parameter<bool>("perf.log_timing", true);
     perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
     const double marker_refresh_period_s =
@@ -113,7 +115,7 @@ public:
     refine_grasped_tcp_frame_ =
       declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
     refine_grasped_camera_frame_ =
-      declare_parameter<std::string>("refine_grasped.camera_frame", "seyond");
+      declare_parameter<std::string>("refine_grasped.camera_frame", "");
     refine_grasped_camera_info_topic_ =
       declare_parameter<std::string>(
       "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
@@ -121,6 +123,12 @@ public:
       declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
     refine_grasped_max_depth_m_ =
       declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
+    refine_grasped_segmentation_timeout_s_ =
+      declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
+    refine_grasped_use_black_bg_ =
+      declare_parameter<bool>("refine_grasped.segmentation_input.use_black_background", false);
+    refine_grasped_blur_kernel_size_ =
+      declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
 
     const auto tcp_to_block_xyz =
       declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
@@ -138,6 +146,10 @@ public:
 
     if (debug_detection_overlay_enabled_) {
       det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>("debug/detection_overlay", 1);
+    }
+    if (debug_refine_grasped_roi_input_enabled_) {
+      refine_grasped_roi_input_pub_ =
+        create_publisher<sensor_msgs::msg::Image>("debug/refine_grasped_roi_input", 1);
     }
     camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
       refine_grasped_camera_info_topic_,
@@ -178,7 +190,10 @@ public:
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    segment_client_ = create_client<SegmentSrv>("/yolos_segmentor_service/segment");
+    segment_client_ = create_client<SegmentSrv>(
+      "/yolos_segmentor_service/segment",
+      rmw_qos_profile_services_default,
+      action_client_cb_group_);
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
       this, "register_block", action_client_cb_group_);
 
@@ -253,12 +268,18 @@ public:
     if (refine_grasped_use_fk_roi_) {
       WM_LOG(
         get_logger(),
-        "REFINE_GRASPED FK+ROI enabled | tcp_frame=%s camera_frame=%s camera_info_topic=%s roi_size=[%.2f, %.2f]m",
+        "REFINE_GRASPED FK+ROI enabled | tcp_frame=%s camera_frame_override=%s camera_info_topic=%s roi_size=[%.2f, %.2f]m",
         refine_grasped_tcp_frame_.c_str(),
-        refine_grasped_camera_frame_.c_str(),
+        refine_grasped_camera_frame_.empty() ? "<image.header.frame_id>" : refine_grasped_camera_frame_.c_str(),
         refine_grasped_camera_info_topic_.c_str(),
         roi_size_x_m_,
         roi_size_y_m_);
+      RCLCPP_INFO(
+        get_logger(),
+        "REFINE_GRASPED segmentation input: background=%s blur_kernel=%d seg_timeout=%.2fs",
+        refine_grasped_use_black_bg_ ? "black" : "blur",
+        refine_grasped_blur_kernel_size_,
+        refine_grasped_segmentation_timeout_s_);
     }
   }
 
@@ -522,6 +543,41 @@ private:
     return true;
   }
 
+  bool runSegmentationSync(
+    const sensor_msgs::msg::Image & image,
+    double timeout_s,
+    SegmentSrv::Response::SharedPtr & out_response,
+    std::string & reason)
+  {
+    if (!segment_client_ || !segment_client_->service_is_ready()) {
+      reason = "segmentation service unavailable";
+      return false;
+    }
+
+    auto seg_req = std::make_shared<SegmentSrv::Request>();
+    seg_req->image = image;
+    seg_req->return_debug = false;
+
+    auto future = segment_client_->async_send_request(seg_req);
+    const auto ret = future.wait_for(std::chrono::duration<double>(timeout_s));
+    if (ret != std::future_status::ready) {
+      reason = "segmentation timeout";
+      return false;
+    }
+
+    out_response = future.get();
+    if (!out_response) {
+      reason = "empty segmentation response";
+      return false;
+    }
+    if (!out_response->success) {
+      reason = "segmentation returned success=false";
+      return false;
+    }
+
+    return true;
+  }
+
   static Eigen::Matrix4d transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
   {
     Eigen::Quaterniond q(
@@ -556,6 +612,7 @@ private:
     }
     std::lock_guard<std::mutex> lock(camera_info_mutex_);
     camera_intrinsics_ = intr;
+    camera_info_frame_id_ = msg->header.frame_id;
   }
 
   bool lookupPredictedGraspedPose(
@@ -574,8 +631,21 @@ private:
         refine_grasped_tcp_frame_,
         rclcpp::Time(header.stamp),
         rclcpp::Duration::from_seconds(0.2));
+      std::string camera_frame = refine_grasped_camera_frame_;
+      if (camera_frame.empty()) {
+        camera_frame = header.frame_id;
+      }
+      if (camera_frame.empty()) {
+        std::lock_guard<std::mutex> lock(camera_info_mutex_);
+        camera_frame = camera_info_frame_id_;
+      }
+      if (camera_frame.empty()) {
+        reason = "camera frame unresolved (no override, image frame, or camera_info frame)";
+        return false;
+      }
+
       const auto tf_camera_world = tf_buffer_->lookupTransform(
-        refine_grasped_camera_frame_,
+        camera_frame,
         world_frame_,
         rclcpp::Time(header.stamp),
         rclcpp::Duration::from_seconds(0.2));
@@ -666,6 +736,30 @@ private:
     det_debug_pub_->publish(*out);
   }
 
+  void publishRoiSegmentationDebugOverlay(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const cv::Rect & roi_rect,
+    const cv::Mat & full_mask)
+  {
+    if (!det_debug_pub_) {
+      return;
+    }
+
+    cv::Mat img = toCvBgr(*image);
+    if (!full_mask.empty()) {
+      overlayMask(img, full_mask, cv::Scalar(255, 255, 0), 0.35);
+    }
+    cv::rectangle(img, roi_rect, cv::Scalar(0, 0, 255), 2);
+    cv::circle(
+      img,
+      cv::Point(roi_rect.x + roi_rect.width / 2, roi_rect.y + roi_rect.height / 2),
+      4,
+      cv::Scalar(0, 0, 255),
+      cv::FILLED);
+    auto out = cv_bridge::CvImage(image->header, "bgr8", img).toImageMsg();
+    det_debug_pub_->publish(*out);
+  }
+
   void processRefineGraspedWithFkRoi(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
@@ -680,7 +774,7 @@ private:
 
     Eigen::Vector3d p_camera = Eigen::Vector3d::Zero();
     std::string reason;
-    if (!lookupPredictedGraspedPose(cloud->header, p_camera, reason)) {
+    if (!lookupPredictedGraspedPose(image->header, p_camera, reason)) {
       RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
       publishPersistentWorld(cloud->header);
       completeOneShotRequest(
@@ -704,18 +798,97 @@ private:
       return;
     }
 
-    if (debug_detection_overlay_enabled_ && det_debug_pub_) {
-      publishRoiDebugOverlay(image, roi_rect);
+    cv::Mat image_bgr = toCvBgr(*image);
+    cv::Mat roi_image_full;
+    if (refine_grasped_use_black_bg_) {
+      roi_image_full = cv::Mat::zeros(image_bgr.size(), image_bgr.type());
+    } else {
+      int k = std::max(1, refine_grasped_blur_kernel_size_);
+      if ((k % 2) == 0) {
+        ++k;
+      }
+      cv::GaussianBlur(image_bgr, roi_image_full, cv::Size(k, k), 0.0, 0.0);
+    }
+    image_bgr(roi_rect).copyTo(roi_image_full(roi_rect));
+    auto roi_image_msg = cv_bridge::CvImage(image->header, "bgr8", roi_image_full).toImageMsg();
+
+    if (debug_refine_grasped_roi_input_enabled_ && refine_grasped_roi_input_pub_) {
+      refine_grasped_roi_input_pub_->publish(*roi_image_msg);
     }
 
-    auto roi_mask_msg = cv_bridge::CvImage(image->header, "mono8", roi_mask).toImageMsg();
+    SegmentSrv::Response::SharedPtr seg_res;
+    if (!runSegmentationSync(*roi_image_msg, refine_grasped_segmentation_timeout_s_, seg_res, reason)) {
+      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation failed: %s", reason.c_str());
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_GRASPED ROI segmentation failed: " + reason);
+      resetBusy();
+      return;
+    }
+
+    cv::Mat seg_mask_roi = toCvMono(seg_res->mask);
+    if (seg_mask_roi.empty()) {
+      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation failed: empty mask.");
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_GRASPED ROI segmentation failed: empty mask.");
+      resetBusy();
+      return;
+    }
+
+    if (seg_mask_roi.cols != static_cast<int>(image->width) ||
+      seg_mask_roi.rows != static_cast<int>(image->height))
+    {
+      cv::resize(
+        seg_mask_roi,
+        seg_mask_roi,
+        cv::Size(static_cast<int>(image->width), static_cast<int>(image->height)),
+        0.0,
+        0.0,
+        cv::INTER_NEAREST);
+    }
+
+    cv::Mat full_seg_mask = seg_mask_roi.clone();
+    cv::bitwise_and(full_seg_mask, roi_mask, full_seg_mask);
+
+    const int seg_nonzero = cv::countNonZero(full_seg_mask);
+    if (seg_nonzero == 0) {
+      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation produced zero mask pixels.");
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_GRASPED ROI segmentation returned empty object mask.");
+      resetBusy();
+      return;
+    }
+
+    if (debug_detection_overlay_enabled_ && det_debug_pub_) {
+      publishRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask);
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "REFINE_GRASPED FK+ROI segmentation: roi=[x=%d y=%d w=%d h=%d] detections=%zu mask_pixels=%d",
+      roi_rect.x,
+      roi_rect.y,
+      roi_rect.width,
+      roi_rect.height,
+      seg_res->detections.detections.size(),
+      seg_nonzero);
+
+    auto full_mask_msg = cv_bridge::CvImage(image->header, "mono8", full_seg_mask).toImageMsg();
     Block block;
     bool registration_ok = false;
     std::string reg_reason;
     const auto t_reg_start = std::chrono::steady_clock::now();
     registration_ok = runRegistrationSync(
       1U,
-      *roi_mask_msg,
+      *full_mask_msg,
       *cloud,
       cloud->header,
       run_request.registration_timeout_s,
@@ -1457,6 +1630,7 @@ private:
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr refine_grasped_roi_input_pub_;
 
   std::unordered_map<std::string, Block> persistent_world_;
   std::mutex persistent_world_mutex_;
@@ -1483,6 +1657,7 @@ private:
   double min_update_confidence_{0.25};
   double refine_target_max_distance_m_{1.2};
   bool debug_detection_overlay_enabled_{true};
+  bool debug_refine_grasped_roi_input_enabled_{true};
   bool perf_log_timing_enabled_{true};
   int perf_log_every_n_frames_{20};
   uint64_t world_block_counter_{0};
@@ -1506,6 +1681,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::mutex camera_info_mutex_;
   CameraIntrinsics camera_intrinsics_;
+  std::string camera_info_frame_id_;
   bool refine_grasped_use_fk_roi_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame_{"seyond"};
@@ -1515,6 +1691,9 @@ private:
   double roi_size_y_m_{0.40};
   double refine_grasped_min_depth_m_{0.5};
   double refine_grasped_max_depth_m_{30.0};
+  double refine_grasped_segmentation_timeout_s_{3.0};
+  bool refine_grasped_use_black_bg_{false};
+  int refine_grasped_blur_kernel_size_{31};
 
 };
 

@@ -159,6 +159,11 @@ def generate_launch_description():
                 executable="block_registration_node",
                 name="registration_node",
                 parameters=[block_registration_params],
+                remappings=[
+                    ("debug/cutout_cloud", "/cbp/debug/registration_cutout"),
+                    ("debug/template_cloud", "/cbp/debug/registration_template"),
+                    ("debug/segmentation_mask", "/cbp/debug/registration_mask"),
+                ],
                 output="screen",
                 emulate_tty=True,
             ),
@@ -198,6 +203,7 @@ def generate_launch_description():
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
+                    ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
                 ],
             ),
         ]

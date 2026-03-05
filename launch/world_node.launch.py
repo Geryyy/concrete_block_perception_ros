@@ -63,6 +63,7 @@ def generate_launch_description():
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
+                    ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
                 ],
                 additional_env={
                     "RCUTILS_COLORIZED_OUTPUT": "1",

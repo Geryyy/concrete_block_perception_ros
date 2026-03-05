@@ -21,6 +21,13 @@ registration_node:
       max_pts: 1000
       nb_neighbors: 20
       std_dev: 2.0
+      # Keep only dominant spatial cluster from mask cutout to suppress ROI background/ground clutter.
+      enable_cluster_filter: false
+      # DBSCAN parameters [m]/[#pts]
+      cluster_eps: 0.08
+      cluster_min_points: 20
+      # Require minimum dominant-cluster size to apply the filter.
+      cluster_min_size: 120
 
     # ------------------------------------------------------------
     # Global registration (plane extraction)
@@ -36,6 +43,9 @@ registration_node:
       max_plane_center_dist: 0.6
       # Whether to enable plane clipping (i.e. mask out points above the detected plane)
       enable_plane_clipping: true
+      # Reject front planes that look TALL_VERTICAL (helps reject stacked-block fronts).
+      # Set false to tolerate partial-occlusion artifacts in grasped refinement.
+      reject_tall_vertical: false
 
     # ------------------------------------------------------------
     # Local registration (ICP)
@@ -47,6 +57,8 @@ registration_node:
     debug:
       publish_cutout: true
       publish_mask: false
+      # Stage-level registration logs (cutout/preprocess/global/local) for diagnosis.
+      verbose_logs: true
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:

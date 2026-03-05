@@ -26,13 +26,14 @@ RosDebugHelpers::RosDebugHelpers(
   templates_(cfg.templates)   // IMPORTANT FIX
 {
   if (publish_debug_cutout_) {
+    const auto debug_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     debug_cutout_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/cutout_cloud", 1);
+      "debug/cutout_cloud", debug_qos);
 
     debug_template_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/template_cloud", 1);
+      "debug/template_cloud", debug_qos);
 
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(node_);
@@ -113,7 +114,7 @@ void RosDebugHelpers::publishVisualization(
           world_frame_,
           stamp));
     }
-  } else {
+  } else if (template_index >= 0) {
     RCLCPP_WARN(
       node_.get_logger(),
       "Invalid template index %d (size=%zu)",

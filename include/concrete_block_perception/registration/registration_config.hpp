@@ -25,6 +25,7 @@ struct BlockRegistrationConfig
 
   bool publish_debug_cutout{true};
   bool publish_debug_mask{true};
+  bool verbose_logs{true};
   bool dump_enabled{false};
   std::string dump_dir;
 };

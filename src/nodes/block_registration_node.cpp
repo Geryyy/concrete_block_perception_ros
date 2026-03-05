@@ -47,7 +47,9 @@ public:
       config_.templates,
       config_.preproc,
       config_.glob,
-      config_.local);
+      config_.local,
+      get_logger(),
+      config_.verbose_logs);
 
     debug_ =
       std::make_unique<RosDebugHelpers>(*this, config_);
@@ -271,6 +273,14 @@ private:
     auto output =
       pipeline_->run(input);
 
+    // Always publish debug cutout/template attempt for offline diagnosis, even on failure.
+    debug_->publishMask(goal->mask, mask);
+    debug_->publishVisualization(
+      goal->cloud,
+      output.debug_scene,
+      output.template_index,
+      output.T_world_block);
+
     if (!output.success) {
       RCLCPP_WARN(
         get_logger(),
@@ -281,16 +291,8 @@ private:
       return;
     }
 
-    // Debug visualization
+    // Debug feedback
     publish_feedback("visualization", 0.9f);
-
-    debug_->publishMask(goal->mask, mask);
-
-    debug_->publishVisualization(
-      goal->cloud,
-      output.debug_scene,
-      output.template_index,
-      output.T_world_block);
 
     // Fill result
     result->pose =
