@@ -3,6 +3,7 @@
 #include <open3d/Open3D.h>
 #include <Eigen/Dense>
 #include <vector>
+#include <string>
 #include <opencv2/core.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -39,6 +40,10 @@ struct GlobalRegistrationParams
 struct LocalRegistrationParams
 {
   double icp_dist{0.04};
+  bool relax_num_faces_match{false};
+  bool use_fk_translation_seed{false};
+  std::vector<double> icp_dist_multipliers{1.0, 1.5, 2.0};
+  bool enable_point_to_point_fallback{true};
 };
 
 struct RegistrationInput
@@ -46,6 +51,8 @@ struct RegistrationInput
   open3d::geometry::PointCloud scene;
   cv::Mat mask;
   Eigen::Matrix4d T_world_cloud;
+  bool has_translation_seed_world{false};
+  Eigen::Vector3d translation_seed_world{Eigen::Vector3d::Zero()};
 };
 
 struct RegistrationOutput
@@ -55,6 +62,8 @@ struct RegistrationOutput
   double fitness{0.0};
   double rmse{0.0};
   int template_index{-1};
+  std::string failure_stage;
+  std::string failure_reason;
 
   // optional debug
   open3d::geometry::PointCloud debug_scene;

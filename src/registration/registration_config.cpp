@@ -58,12 +58,19 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<bool>("glob_reg.reject_tall_vertical", true);
 
   node.declare_parameter<double>("loc_reg.icp_dist", 0.04);
+  node.declare_parameter<bool>("loc_reg.relax_num_faces_match", false);
+  node.declare_parameter<bool>("loc_reg.use_fk_translation_seed", false);
+  node.declare_parameter<std::vector<double>>("loc_reg.icp_dist_multipliers", {1.0, 1.5, 2.0});
+  node.declare_parameter<bool>("loc_reg.enable_point_to_point_fallback", true);
+  node.declare_parameter<std::string>("loc_reg.fk_seed.tcp_frame", "elastic/K8_tool_center_point");
+  node.declare_parameter<std::vector<double>>("loc_reg.fk_seed.tcp_to_block_xyz", {0.0, 0.0, 0.0});
 
   node.declare_parameter<bool>("debug.publish_cutout", true);
   node.declare_parameter<bool>("debug.publish_mask", true);
   node.declare_parameter<bool>("debug.verbose_logs", true);
 
   node.declare_parameter<bool>("dump.enable", false);
+  node.declare_parameter<bool>("dump.failure_package", true);
   node.declare_parameter<std::string>("dump.dir", "dump");
 
   // ------------------------------------------------------------
@@ -174,6 +181,28 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.local.icp_dist =
     node.get_parameter("loc_reg.icp_dist").as_double();
+  cfg.local.relax_num_faces_match =
+    node.get_parameter("loc_reg.relax_num_faces_match").as_bool();
+  cfg.local.use_fk_translation_seed =
+    node.get_parameter("loc_reg.use_fk_translation_seed").as_bool();
+  cfg.local.icp_dist_multipliers =
+    node.get_parameter("loc_reg.icp_dist_multipliers").as_double_array();
+  if (cfg.local.icp_dist_multipliers.empty()) {
+    cfg.local.icp_dist_multipliers = {1.0};
+  }
+  cfg.local.enable_point_to_point_fallback =
+    node.get_parameter("loc_reg.enable_point_to_point_fallback").as_bool();
+  cfg.fk_seed_tcp_frame =
+    node.get_parameter("loc_reg.fk_seed.tcp_frame").as_string();
+  const auto fk_seed_tcp_to_block_xyz =
+    node.get_parameter("loc_reg.fk_seed.tcp_to_block_xyz").as_double_array();
+  if (fk_seed_tcp_to_block_xyz.size() >= 3) {
+    cfg.fk_seed_tcp_to_block_xyz =
+      Eigen::Vector3d(
+      fk_seed_tcp_to_block_xyz[0],
+      fk_seed_tcp_to_block_xyz[1],
+      fk_seed_tcp_to_block_xyz[2]);
+  }
 
   // ------------------------------------------------------------
   // Debug + dump
@@ -189,6 +218,8 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.dump_enabled =
     node.get_parameter("dump.enable").as_bool();
+  cfg.dump_failure_package =
+    node.get_parameter("dump.failure_package").as_bool();
 
   const std::string dump_dir_rel =
     node.get_parameter("dump.dir").as_string();
@@ -216,6 +247,14 @@ load_registration_config(rclcpp::Node & node)
     node.get_logger(),
     "  templates: %s",
     tpl_params.out_dir.c_str());
+  RCLCPP_INFO(
+    node.get_logger(),
+    "  loc_reg: icp_dist=%.3f relax_num_faces_match=%s use_fk_translation_seed=%s p2p_fallback=%s multipliers=%zu",
+    cfg.local.icp_dist,
+    cfg.local.relax_num_faces_match ? "true" : "false",
+    cfg.local.use_fk_translation_seed ? "true" : "false",
+    cfg.local.enable_point_to_point_fallback ? "true" : "false",
+    cfg.local.icp_dist_multipliers.size());
 
   return cfg;
 }

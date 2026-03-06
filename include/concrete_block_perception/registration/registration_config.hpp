@@ -27,7 +27,10 @@ struct BlockRegistrationConfig
   bool publish_debug_mask{true};
   bool verbose_logs{true};
   bool dump_enabled{false};
+  bool dump_failure_package{true};
   std::string dump_dir;
+  std::string fk_seed_tcp_frame{"elastic/K8_tool_center_point"};
+  Eigen::Vector3d fk_seed_tcp_to_block_xyz{Eigen::Vector3d::Zero()};
 };
 
 BlockRegistrationConfig

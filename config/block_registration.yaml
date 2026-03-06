@@ -53,6 +53,21 @@ registration_node:
     loc_reg:
       # Max correspondence distance for ICP [m]
       icp_dist: 0.04
+      # If true, do not require tpl.num_faces == glob.num_planes.
+      # Useful for partial occlusion in REFINE_GRASPED.
+      relax_num_faces_match: true
+      # Use FK-based translation seed (world) for local ICP init.
+      # Default false to avoid changing non-grasped behavior.
+      use_fk_translation_seed: false
+      # Adaptive ICP correspondence-distance scales applied to icp_dist.
+      # Tried in order until a valid fit is found.
+      icp_dist_multipliers: [1.0, 1.5, 2.0]
+      # If true, run point-to-point ICP fallback and then refine with point-to-plane.
+      enable_point_to_point_fallback: true
+      fk_seed:
+        tcp_frame: "elastic/K8_tool_center_point"
+        # Translation from tcp_frame origin to block center in tcp_frame coordinates [m].
+        tcp_to_block_xyz: [0.0, 0.0, 0.9]
 
     debug:
       publish_cutout: true
@@ -62,5 +77,7 @@ registration_node:
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
-      enable: false
+      enable: true
+      # When enabled, write extra *_fail_* package on registration failures.
+      failure_package: true
       dir: dump

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
 
 #include "concrete_block_perception/utils/io_utils.hpp"
 #include "pcd_block_estimation/utils.hpp"
@@ -189,6 +190,76 @@ void RosDebugHelpers::dumpInput(
       "Failed to dump cloud: %s",
       e.what());
   }
+}
+
+void RosDebugHelpers::dumpFailurePackage(
+  const sensor_msgs::msg::PointCloud2 & cloud,
+  const sensor_msgs::msg::Image & mask,
+  const open3d::geometry::PointCloud & cutout_world,
+  const std::string & stage,
+  const std::string & reason)
+{
+  if (!dump_enabled_) {
+    return;
+  }
+
+  const auto & stamp = cloud.header.stamp;
+  std::ostringstream base;
+  base << stamp.sec << "_"
+       << std::setw(9)
+       << std::setfill('0')
+       << stamp.nanosec
+       << "_fail";
+  const std::string prefix = dump_dir_ + "/" + base.str();
+
+  try {
+    cv::Mat mask_img = cv_bridge::toCvCopy(mask, "mono8")->image;
+    cv::imwrite(prefix + "_mask.png", mask_img);
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(node_.get_logger(), "Failed to dump failure mask: %s", e.what());
+  }
+
+  try {
+    auto cloud_o3d = pointcloud2_to_open3d(cloud);
+    if (cloud_o3d) {
+      open3d::io::WritePointCloud(prefix + "_cloud.ply", *cloud_o3d, false);
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(node_.get_logger(), "Failed to dump failure cloud: %s", e.what());
+  }
+
+  try {
+    if (!cutout_world.points_.empty()) {
+      open3d::io::WritePointCloud(prefix + "_cutout_world.ply", cutout_world, false);
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(node_.get_logger(), "Failed to dump failure cutout: %s", e.what());
+  }
+
+  try {
+    std::ofstream meta(prefix + "_meta.yaml");
+    if (meta.is_open()) {
+      meta << "stage: \"" << stage << "\"\n";
+      meta << "reason: \"" << reason << "\"\n";
+      meta << "world_frame: \"" << world_frame_ << "\"\n";
+      meta << "cloud_frame: \"" << cloud.header.frame_id << "\"\n";
+      meta << "stamp:\n";
+      meta << "  sec: " << stamp.sec << "\n";
+      meta << "  nanosec: " << stamp.nanosec << "\n";
+      meta << "mask:\n";
+      meta << "  width: " << mask.width << "\n";
+      meta << "  height: " << mask.height << "\n";
+      meta << "cutout_world_points: " << cutout_world.points_.size() << "\n";
+      meta.close();
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(node_.get_logger(), "Failed to dump failure metadata: %s", e.what());
+  }
+
+  RCLCPP_WARN(
+    node_.get_logger(),
+    "Failure package dumped: %s_[mask.png|cloud.ply|cutout_world.ply|meta.yaml]",
+    prefix.c_str());
 }
 
 } // namespace concrete_block_perception

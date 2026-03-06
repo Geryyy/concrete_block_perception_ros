@@ -488,12 +488,13 @@ private:
     const std_msgs::msg::Header & header,
     double timeout_s,
     Block & out_block,
-    std::string & reason)
+    std::string & reason,
+    const std::string & object_class_override = "")
   {
     RegisterBlock::Goal goal;
     goal.mask = mask;
     goal.cloud = cloud;
-    goal.object_class = object_class_;
+    goal.object_class = object_class_override.empty() ? object_class_ : object_class_override;
 
     std::mutex reg_mutex;
     std::condition_variable reg_cv;
@@ -937,7 +938,8 @@ private:
       cloud->header,
       run_request.registration_timeout_s,
       block,
-      reg_reason);
+      reg_reason,
+      object_class_ + "#REFINE_GRASPED");
     const auto t_reg_end = std::chrono::steady_clock::now();
 
     size_t registrations_ok = 0;

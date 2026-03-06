@@ -46,6 +46,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 
   if (!computeCutout(in.scene, in.mask, cutout)) {
     RCLCPP_WARN(logger_, "Cutout failed: no points selected from mask.");
+    out.failure_stage = "cutout";
+    out.failure_reason = "no points selected from mask";
     return out;
   }
 
@@ -68,6 +70,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 
   if (cutout.points_.empty()) {
     RCLCPP_WARN(logger_, "Preprocess rejected all points.");
+    out.failure_stage = "preprocess";
+    out.failure_reason = "all points removed during preprocess";
     return out;
   }
 
@@ -85,6 +89,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 
   if (!glob_res.success) {
     RCLCPP_WARN(logger_, "Global registration failed.");
+    out.failure_stage = "global_registration";
+    out.failure_reason = "global registration failed";
     return out;
   }
 
@@ -92,12 +98,29 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     glob_res.plane_cloud ? *glob_res.plane_cloud : cutout;
   out.debug_scene = icp_scene;
 
+  const Eigen::Vector3d * local_seed_ptr = nullptr;
+  if (loc_.use_fk_translation_seed && in.has_translation_seed_world) {
+    local_seed_ptr = &in.translation_seed_world;
+    if (verbose_logs_) {
+      RCLCPP_INFO(
+        logger_,
+        "Using external translation seed for local ICP: [%.3f %.3f %.3f]",
+        in.translation_seed_world.x(),
+        in.translation_seed_world.y(),
+        in.translation_seed_world.z());
+    }
+  }
+
   LocalRegistrationResult reg =
     compute_local_registration(
     icp_scene,
     templates_,
     glob_res,
-    loc_.icp_dist);
+    loc_.icp_dist,
+    loc_.relax_num_faces_match,
+    local_seed_ptr,
+    loc_.icp_dist_multipliers,
+    loc_.enable_point_to_point_fallback);
 
   if (!reg.success) {
     RCLCPP_WARN(
@@ -111,6 +134,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       reg.icp_positive,
       reg.best_fitness_seen,
       reg.best_rmse_seen);
+    out.failure_stage = "local_icp";
+    out.failure_reason = reg.failure_reason;
     return out;
   }
 

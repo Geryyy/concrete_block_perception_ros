@@ -128,9 +128,15 @@ private:
     input.scene = *scene_ptr;
     input.mask = mask;
     input.T_world_cloud = transformToEigen(tf_cloud);
+    if (config_.local.use_fk_translation_seed) {
+      RCLCPP_DEBUG(
+        get_logger(),
+        "FK translation seed is action-mode gated; skipping for register_block_pose service call.");
+    }
 
     auto output = pipeline_->run(input);
     if (!output.success) {
+      maybeDumpFailurePackage(request->cloud, request->mask, output);
       response->success = false;
       return;
     }
@@ -266,6 +272,15 @@ private:
     input.mask = mask;
     input.T_world_cloud =
       transformToEigen(tf_cloud);
+    if (config_.local.use_fk_translation_seed && shouldUseFkSeedForGoal(goal->object_class)) {
+      if (!resolveFkTranslationSeed(goal->cloud.header, input.translation_seed_world)) {
+        RCLCPP_WARN(
+          get_logger(),
+          "FK translation seed requested but unavailable; falling back to global translation seed.");
+      } else {
+        input.has_translation_seed_world = true;
+      }
+    }
 
     // Run registration
     publish_feedback("registration", 0.6f);
@@ -282,6 +297,7 @@ private:
       output.T_world_block);
 
     if (!output.success) {
+      maybeDumpFailurePackage(goal->cloud, goal->mask, output);
       RCLCPP_WARN(
         get_logger(),
         "Registration failed.");
@@ -338,6 +354,55 @@ private:
         ex.what());
       return false;
     }
+  }
+
+  bool resolveFkTranslationSeed(
+    const std_msgs::msg::Header & header,
+    Eigen::Vector3d & out_translation_world)
+  {
+    try {
+      const auto tf_world_tcp =
+        tf_buffer_->lookupTransform(
+        config_.world_frame,
+        config_.fk_seed_tcp_frame,
+        rclcpp::Time(header.stamp),
+        rclcpp::Duration::from_seconds(0.2));
+
+      Eigen::Matrix4d T_world_tcp = Eigen::Matrix4d::Identity();
+      T_world_tcp = transformToEigen(tf_world_tcp);
+      const Eigen::Vector4d p_tcp_block_h(
+        config_.fk_seed_tcp_to_block_xyz.x(),
+        config_.fk_seed_tcp_to_block_xyz.y(),
+        config_.fk_seed_tcp_to_block_xyz.z(),
+        1.0);
+      const Eigen::Vector4d p_world = T_world_tcp * p_tcp_block_h;
+      out_translation_world = p_world.head<3>();
+      return true;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        get_logger(),
+        "FK seed TF lookup failed (%s <- %s): %s",
+        config_.world_frame.c_str(),
+        config_.fk_seed_tcp_frame.c_str(),
+        ex.what());
+      return false;
+    }
+  }
+
+  bool shouldUseFkSeedForGoal(const std::string & object_class) const
+  {
+    return object_class.find("#REFINE_GRASPED") != std::string::npos;
+  }
+
+  void maybeDumpFailurePackage(
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const sensor_msgs::msg::Image & mask,
+    const RegistrationOutput & output)
+  {
+    if (!config_.dump_enabled || !config_.dump_failure_package || !debug_) {
+      return;
+    }
+    debug_->dumpFailurePackage(cloud, mask, output.debug_scene, output.failure_stage, output.failure_reason);
   }
 
   BlockRegistrationConfig config_;
