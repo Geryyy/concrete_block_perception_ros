@@ -3,7 +3,9 @@
 #include <open3d/Open3D.h>
 #include <Eigen/Dense>
 #include <vector>
+#include <string>
 #include <opencv2/core.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "pcd_block_estimation/pose_estimation.hpp"
 #include "pcd_block_estimation/mask_projection.hpp"
@@ -17,6 +19,10 @@ struct PreprocessingParams
   size_t max_pts{500};
   int nb_neighbors{20};
   double std_dev{2.0};
+  bool enable_cluster_filter{false};
+  double cluster_eps{0.08};
+  int cluster_min_points{20};
+  int cluster_min_size{100};
 };
 
 struct GlobalRegistrationParams
@@ -28,11 +34,16 @@ struct GlobalRegistrationParams
   double angle_thresh{0.9};
   double max_plane_center_dist{0.6};
   bool enable_plane_clipping{false};
+  bool reject_tall_vertical{true};
 };
 
 struct LocalRegistrationParams
 {
   double icp_dist{0.04};
+  bool relax_num_faces_match{false};
+  bool use_fk_translation_seed{false};
+  std::vector<double> icp_dist_multipliers{1.0, 1.5, 2.0};
+  bool enable_point_to_point_fallback{true};
 };
 
 struct RegistrationInput
@@ -40,6 +51,8 @@ struct RegistrationInput
   open3d::geometry::PointCloud scene;
   cv::Mat mask;
   Eigen::Matrix4d T_world_cloud;
+  bool has_translation_seed_world{false};
+  Eigen::Vector3d translation_seed_world{Eigen::Vector3d::Zero()};
 };
 
 struct RegistrationOutput
@@ -49,6 +62,8 @@ struct RegistrationOutput
   double fitness{0.0};
   double rmse{0.0};
   int template_index{-1};
+  std::string failure_stage;
+  std::string failure_reason;
 
   // optional debug
   open3d::geometry::PointCloud debug_scene;
@@ -63,7 +78,9 @@ public:
     const std::vector<pcd_block::TemplateData> & templates,
     const PreprocessingParams & pre,
     const GlobalRegistrationParams & glob,
-    const LocalRegistrationParams & loc);
+    const LocalRegistrationParams & loc,
+    const rclcpp::Logger & logger,
+    bool verbose_logs);
 
   RegistrationOutput run(const RegistrationInput & in);
 
@@ -77,8 +94,8 @@ private:
     open3d::geometry::PointCloud & cutout,
     const Eigen::Matrix4d & T_world_cloud);
 
-  Eigen::Matrix4d globalResultToTransform(
-    const pcd_block::GlobalRegistrationResult & glob);
+  bool keepDominantCluster(
+    open3d::geometry::PointCloud & cutout);
 
   Eigen::Matrix4d T_P_C_;
   Eigen::Matrix3d K_;
@@ -87,6 +104,8 @@ private:
   PreprocessingParams pre_;
   GlobalRegistrationParams glob_;
   LocalRegistrationParams loc_;
+  rclcpp::Logger logger_;
+  bool verbose_logs_{false};
 };
 
 } // namespace

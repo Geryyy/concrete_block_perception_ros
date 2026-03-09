@@ -87,11 +87,11 @@ def generate_launch_description():
     declare_bag = DeclareLaunchArgument(
         "bag",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
-        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_2_placement_rotated",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_2_placement_rotated",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_3_pickup_rotated",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_4_placement_far",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_5_stacking",
-        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_6_stacking_rotated",
+        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_6_stacking_rotated",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_7_palettes",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_8_palettes",
         description="Path to rosbag to replay",

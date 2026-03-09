@@ -245,19 +245,8 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
     m.scale.y = kMarkerHeightM;
     m.scale.z = kMarkerDepthM;
 
-    if (b.task_status == Block::TASK_REMOVED) {
-      m.color.r = 0.9f;
-      m.color.g = 0.1f;
-      m.color.b = 0.1f;
-    } else if (b.task_status == Block::TASK_PLACED) {
-      m.color.r = 0.1f;
-      m.color.g = 0.9f;
-      m.color.b = 0.9f;
-    } else if (b.task_status == Block::TASK_MOVE) {
-      m.color.r = 0.2f;
-      m.color.g = 0.4f;
-      m.color.b = 1.0f;
-    } else if (b.pose_status == Block::POSE_PRECISE) {
+    // Pose status takes precedence in marker color so coarse/precise is always visible in RViz.
+    if (b.pose_status == Block::POSE_PRECISE) {
       m.color.r = 0.1f;
       m.color.g = 0.8f;
       m.color.b = 0.2f;
@@ -271,6 +260,15 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
       m.color.b = 0.5f;
     }
     m.color.a = 0.6f;
+
+    // Keep some task-state visibility via alpha changes without hiding pose status color.
+    if (b.task_status == Block::TASK_REMOVED) {
+      m.color.a = 0.25f;
+    } else if (b.task_status == Block::TASK_MOVE) {
+      m.color.a = 0.85f;
+    } else if (b.task_status == Block::TASK_PLACED) {
+      m.color.a = 0.7f;
+    }
     ma.markers.push_back(std::move(m));
 
     visualization_msgs::msg::Marker label;

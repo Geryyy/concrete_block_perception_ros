@@ -21,6 +21,13 @@ registration_node:
       max_pts: 1000
       nb_neighbors: 20
       std_dev: 2.0
+      # Keep only dominant spatial cluster from mask cutout to suppress ROI background/ground clutter.
+      enable_cluster_filter: false
+      # DBSCAN parameters [m]/[#pts]
+      cluster_eps: 0.08
+      cluster_min_points: 20
+      # Require minimum dominant-cluster size to apply the filter.
+      cluster_min_size: 120
 
     # ------------------------------------------------------------
     # Global registration (plane extraction)
@@ -36,6 +43,9 @@ registration_node:
       max_plane_center_dist: 0.6
       # Whether to enable plane clipping (i.e. mask out points above the detected plane)
       enable_plane_clipping: true
+      # Reject front planes that look TALL_VERTICAL (helps reject stacked-block fronts).
+      # Set false to tolerate partial-occlusion artifacts in grasped refinement.
+      reject_tall_vertical: false
 
     # ------------------------------------------------------------
     # Local registration (ICP)
@@ -43,12 +53,31 @@ registration_node:
     loc_reg:
       # Max correspondence distance for ICP [m]
       icp_dist: 0.04
+      # If true, do not require tpl.num_faces == glob.num_planes.
+      # Useful for partial occlusion in REFINE_GRASPED.
+      relax_num_faces_match: true
+      # Use FK-based translation seed (world) for local ICP init.
+      # Default false to avoid changing non-grasped behavior.
+      use_fk_translation_seed: false
+      # Adaptive ICP correspondence-distance scales applied to icp_dist.
+      # Tried in order until a valid fit is found.
+      icp_dist_multipliers: [1.0, 1.5, 2.0]
+      # If true, run point-to-point ICP fallback and then refine with point-to-plane.
+      enable_point_to_point_fallback: true
+      fk_seed:
+        tcp_frame: "elastic/K8_tool_center_point"
+        # Translation from tcp_frame origin to block center in tcp_frame coordinates [m].
+        tcp_to_block_xyz: [0.0, 0.0, 0.9]
 
     debug:
       publish_cutout: true
       publish_mask: false
+      # Stage-level registration logs (cutout/preprocess/global/local) for diagnosis.
+      verbose_logs: true
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
-      enable: false
+      enable: true
+      # When enabled, write extra *_fail_* package on registration failures.
+      failure_package: true
       dir: dump

@@ -45,19 +45,32 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<int>("preproc.max_pts", 500);
   node.declare_parameter<int>("preproc.nb_neighbors", 20);
   node.declare_parameter<double>("preproc.std_dev", 2.0);
+  node.declare_parameter<bool>("preproc.enable_cluster_filter", false);
+  node.declare_parameter<double>("preproc.cluster_eps", 0.08);
+  node.declare_parameter<int>("preproc.cluster_min_points", 20);
+  node.declare_parameter<int>("preproc.cluster_min_size", 100);
 
   node.declare_parameter<double>("glob_reg.dist_thresh", 0.02);
   node.declare_parameter<int>("glob_reg.min_inliers", 100);
   node.declare_parameter<double>("glob_reg.angle_thresh_degree", 30.0);
   node.declare_parameter<double>("glob_reg.max_plane_center_dist", 0.6);
   node.declare_parameter<bool>("glob_reg.enable_plane_clipping", false);
+  node.declare_parameter<bool>("glob_reg.reject_tall_vertical", true);
 
   node.declare_parameter<double>("loc_reg.icp_dist", 0.04);
+  node.declare_parameter<bool>("loc_reg.relax_num_faces_match", false);
+  node.declare_parameter<bool>("loc_reg.use_fk_translation_seed", false);
+  node.declare_parameter<std::vector<double>>("loc_reg.icp_dist_multipliers", {1.0, 1.5, 2.0});
+  node.declare_parameter<bool>("loc_reg.enable_point_to_point_fallback", true);
+  node.declare_parameter<std::string>("loc_reg.fk_seed.tcp_frame", "elastic/K8_tool_center_point");
+  node.declare_parameter<std::vector<double>>("loc_reg.fk_seed.tcp_to_block_xyz", {0.0, 0.0, 0.0});
 
   node.declare_parameter<bool>("debug.publish_cutout", true);
   node.declare_parameter<bool>("debug.publish_mask", true);
+  node.declare_parameter<bool>("debug.verbose_logs", true);
 
   node.declare_parameter<bool>("dump.enable", false);
+  node.declare_parameter<bool>("dump.failure_package", true);
   node.declare_parameter<std::string>("dump.dir", "dump");
 
   // ------------------------------------------------------------
@@ -128,6 +141,14 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.preproc.std_dev =
     node.get_parameter("preproc.std_dev").as_double();
+  cfg.preproc.enable_cluster_filter =
+    node.get_parameter("preproc.enable_cluster_filter").as_bool();
+  cfg.preproc.cluster_eps =
+    node.get_parameter("preproc.cluster_eps").as_double();
+  cfg.preproc.cluster_min_points =
+    node.get_parameter("preproc.cluster_min_points").as_int();
+  cfg.preproc.cluster_min_size =
+    node.get_parameter("preproc.cluster_min_size").as_int();
 
   // ------------------------------------------------------------
   // Global registration params
@@ -151,6 +172,8 @@ load_registration_config(rclcpp::Node & node)
   bool enable_plane_clipping =
     node.get_parameter("glob_reg.enable_plane_clipping").as_bool();
   cfg.glob.enable_plane_clipping = enable_plane_clipping;
+  cfg.glob.reject_tall_vertical =
+    node.get_parameter("glob_reg.reject_tall_vertical").as_bool();
 
   // ------------------------------------------------------------
   // Local registration params
@@ -158,6 +181,28 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.local.icp_dist =
     node.get_parameter("loc_reg.icp_dist").as_double();
+  cfg.local.relax_num_faces_match =
+    node.get_parameter("loc_reg.relax_num_faces_match").as_bool();
+  cfg.local.use_fk_translation_seed =
+    node.get_parameter("loc_reg.use_fk_translation_seed").as_bool();
+  cfg.local.icp_dist_multipliers =
+    node.get_parameter("loc_reg.icp_dist_multipliers").as_double_array();
+  if (cfg.local.icp_dist_multipliers.empty()) {
+    cfg.local.icp_dist_multipliers = {1.0};
+  }
+  cfg.local.enable_point_to_point_fallback =
+    node.get_parameter("loc_reg.enable_point_to_point_fallback").as_bool();
+  cfg.fk_seed_tcp_frame =
+    node.get_parameter("loc_reg.fk_seed.tcp_frame").as_string();
+  const auto fk_seed_tcp_to_block_xyz =
+    node.get_parameter("loc_reg.fk_seed.tcp_to_block_xyz").as_double_array();
+  if (fk_seed_tcp_to_block_xyz.size() >= 3) {
+    cfg.fk_seed_tcp_to_block_xyz =
+      Eigen::Vector3d(
+      fk_seed_tcp_to_block_xyz[0],
+      fk_seed_tcp_to_block_xyz[1],
+      fk_seed_tcp_to_block_xyz[2]);
+  }
 
   // ------------------------------------------------------------
   // Debug + dump
@@ -168,9 +213,13 @@ load_registration_config(rclcpp::Node & node)
 
   cfg.publish_debug_mask =
     node.get_parameter("debug.publish_mask").as_bool();
+  cfg.verbose_logs =
+    node.get_parameter("debug.verbose_logs").as_bool();
 
   cfg.dump_enabled =
     node.get_parameter("dump.enable").as_bool();
+  cfg.dump_failure_package =
+    node.get_parameter("dump.failure_package").as_bool();
 
   const std::string dump_dir_rel =
     node.get_parameter("dump.dir").as_string();
@@ -198,6 +247,14 @@ load_registration_config(rclcpp::Node & node)
     node.get_logger(),
     "  templates: %s",
     tpl_params.out_dir.c_str());
+  RCLCPP_INFO(
+    node.get_logger(),
+    "  loc_reg: icp_dist=%.3f relax_num_faces_match=%s use_fk_translation_seed=%s p2p_fallback=%s multipliers=%zu",
+    cfg.local.icp_dist,
+    cfg.local.relax_num_faces_match ? "true" : "false",
+    cfg.local.use_fk_translation_seed ? "true" : "false",
+    cfg.local.enable_point_to_point_fallback ? "true" : "false",
+    cfg.local.icp_dist_multipliers.size());
 
   return cfg;
 }

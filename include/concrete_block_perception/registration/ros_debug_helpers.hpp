@@ -39,6 +39,13 @@ public:
   void dumpInput(
     const concrete_block_perception::action::RegisterBlock::Goal & goal);
 
+  void dumpFailurePackage(
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const sensor_msgs::msg::Image & mask,
+    const open3d::geometry::PointCloud & cutout_world,
+    const std::string & stage,
+    const std::string & reason);
+
 private:
   rclcpp::Node & node_;
 
