@@ -38,6 +38,7 @@
 #include "concrete_block_perception/utils/coarse_pose_utils.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
+#include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/world_model/registration_flow.hpp"
 #include "concrete_block_perception/world_model/roi_processing.hpp"
 #include "concrete_block_perception/world_model/refine_flow.hpp"
@@ -97,26 +98,57 @@ class WorldModelNode : public rclcpp::Node
     bool debug_log{true};
   };
 
-  struct StartupParameters
-  {
-    std::string pipeline_mode_str{"full"};
-    std::string perception_mode_str{"FULL"};
-    double marker_refresh_period_s{0.5};
-    std::vector<double> tcp_to_block_xyz{0.0, 0.0, 0.0};
-    std::vector<double> tcp_to_block_rpy{0.0, 0.0, 0.0};
-    std::vector<double> refine_grasped_roi_size_m{0.60, 0.40};
-    std::vector<double> refine_block_roi_size_m{1.20, 1.00};
-  };
-
 public:
   WorldModelNode()
   : Node("block_world_model_node")
   {
     run_pose_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     action_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    const StartupParameters startup = loadStartupParameters();
+    auto startup = cbpwm::loadWorldModelConfig(*this);
+    cbpwm::normalizeWorldModelConfig(get_logger(), startup);
+    pipeline_mode_ = cbpwm::parsePipelineMode(startup.pipeline_mode_str);
     const std::string & pipeline_mode_str = startup.pipeline_mode_str;
     const std::string & perception_mode_str = startup.perception_mode_str;
+    min_fitness_ = startup.min_fitness;
+    max_rmse_ = startup.max_rmse;
+    object_class_ = startup.object_class;
+    world_frame_ = startup.world_frame;
+    max_sync_delta_s_ = startup.max_sync_delta_s;
+    object_timeout_s_ = startup.object_timeout_s;
+    association_max_distance_m_ = startup.association_max_distance_m;
+    association_max_age_s_ = startup.association_max_age_s;
+    min_update_confidence_ = startup.min_update_confidence;
+    refine_target_max_distance_m_ = startup.refine_target_max_distance_m;
+    scene_discovery_coarse_fallback_enabled_ = startup.scene_discovery_coarse_fallback_enabled;
+    scene_discovery_coarse_fallback_min_points_ = startup.scene_discovery_coarse_fallback_min_points;
+    coarse_surface_square_ratio_thresh_ = startup.coarse_surface_square_ratio_thresh;
+    coarse_front_center_offset_square_m_ = startup.coarse_front_center_offset_square_m;
+    coarse_front_center_offset_rect_m_ = startup.coarse_front_center_offset_rect_m;
+    debug_detection_overlay_enabled_ = startup.debug_detection_overlay_enabled;
+    debug_refine_grasped_roi_input_enabled_ = startup.debug_refine_grasped_roi_input_enabled;
+    perf_log_timing_enabled_ = startup.perf_log_timing_enabled;
+    perf_log_every_n_frames_ = startup.perf_log_every_n_frames;
+    refine_grasped_use_fk_roi_ = startup.refine_grasped_use_fk_roi;
+    refine_grasped_tcp_frame_ = startup.refine_grasped_tcp_frame;
+    refine_grasped_camera_frame_ = startup.refine_grasped_camera_frame;
+    refine_grasped_camera_info_topic_ = startup.refine_grasped_camera_info_topic;
+    refine_grasped_min_depth_m_ = startup.refine_grasped_min_depth_m;
+    refine_grasped_max_depth_m_ = startup.refine_grasped_max_depth_m;
+    refine_grasped_segmentation_timeout_s_ = startup.refine_grasped_segmentation_timeout_s;
+    refine_grasped_use_black_bg_ = startup.refine_grasped_use_black_bg;
+    refine_grasped_blur_kernel_size_ = startup.refine_grasped_blur_kernel_size;
+    refine_grasped_pose_fusion_.enabled = startup.refine_grasped_pose_fusion.enabled;
+    refine_grasped_pose_fusion_.mode = startup.refine_grasped_pose_fusion.mode;
+    refine_grasped_pose_fusion_.max_translation_jump_m =
+      startup.refine_grasped_pose_fusion.max_translation_jump_m;
+    refine_grasped_pose_fusion_.max_z_delta_m = startup.refine_grasped_pose_fusion.max_z_delta_m;
+    refine_grasped_pose_fusion_.debug_log = startup.refine_grasped_pose_fusion.debug_log;
+    refine_block_use_pose_roi_ = startup.refine_block_use_pose_roi;
+    refine_block_min_depth_m_ = startup.refine_block_min_depth_m;
+    refine_block_max_depth_m_ = startup.refine_block_max_depth_m;
+    refine_block_segmentation_timeout_s_ = startup.refine_block_segmentation_timeout_s;
+    refine_block_use_black_bg_ = startup.refine_block_use_black_bg;
+    refine_block_blur_kernel_size_ = startup.refine_block_blur_kernel_size;
 
     if (perf_log_every_n_frames_ < 1) {
       perf_log_every_n_frames_ = 1;
@@ -134,18 +166,42 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&WorldModelNode::cameraInfoCallback, this, std::placeholders::_1));
 
-    const double tx = getVectorComponent(
-      startup.tcp_to_block_xyz, 0, 0.0, "refine_grasped.tcp_to_block.xyz");
-    const double ty = getVectorComponent(
-      startup.tcp_to_block_xyz, 1, 0.0, "refine_grasped.tcp_to_block.xyz");
-    const double tz = getVectorComponent(
-      startup.tcp_to_block_xyz, 2, 0.0, "refine_grasped.tcp_to_block.xyz");
-    const double rr = getVectorComponent(
-      startup.tcp_to_block_rpy, 0, 0.0, "refine_grasped.tcp_to_block.rpy");
-    const double rp = getVectorComponent(
-      startup.tcp_to_block_rpy, 1, 0.0, "refine_grasped.tcp_to_block.rpy");
-    const double ry = getVectorComponent(
-      startup.tcp_to_block_rpy, 2, 0.0, "refine_grasped.tcp_to_block.rpy");
+    const double tx = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_xyz,
+      0,
+      0.0,
+      "refine_grasped.tcp_to_block.xyz");
+    const double ty = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_xyz,
+      1,
+      0.0,
+      "refine_grasped.tcp_to_block.xyz");
+    const double tz = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_xyz,
+      2,
+      0.0,
+      "refine_grasped.tcp_to_block.xyz");
+    const double rr = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_rpy,
+      0,
+      0.0,
+      "refine_grasped.tcp_to_block.rpy");
+    const double rp = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_rpy,
+      1,
+      0.0,
+      "refine_grasped.tcp_to_block.rpy");
+    const double ry = cbpwm::vectorComponent(
+      get_logger(),
+      startup.refine_grasped_tcp_to_block_rpy,
+      2,
+      0.0,
+      "refine_grasped.tcp_to_block.rpy");
     const Eigen::Matrix3d rot_tcp_block =
       (Eigen::AngleAxisd(ry, Eigen::Vector3d::UnitZ()) *
       Eigen::AngleAxisd(rp, Eigen::Vector3d::UnitY()) *
@@ -154,15 +210,16 @@ public:
     T_tcp_block_.block<3, 3>(0, 0) = rot_tcp_block;
     T_tcp_block_.block<3, 1>(0, 3) = Eigen::Vector3d(tx, ty, tz);
 
-    roi_size_x_m_ = getVectorComponent(
-      startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
-    roi_size_y_m_ = getVectorComponent(
-      startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
+    roi_size_x_m_ = cbpwm::vectorComponent(
+      get_logger(), startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
+    roi_size_y_m_ = cbpwm::vectorComponent(
+      get_logger(), startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
     refine_block_roi_size_x_m_ =
-      getVectorComponent(startup.refine_block_roi_size_m, 0, 1.20, "refine_block.roi_size_m");
+      cbpwm::vectorComponent(
+      get_logger(), startup.refine_block_roi_size_m, 0, 1.20, "refine_block.roi_size_m");
     refine_block_roi_size_y_m_ =
-      getVectorComponent(startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
-    normalizeConfiguration();
+      cbpwm::vectorComponent(
+      get_logger(), startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -346,175 +403,6 @@ private:
     cfg.association_max_age_s = association_max_age_s_;
     cfg.min_update_confidence = min_update_confidence_;
     return cfg;
-  }
-
-  StartupParameters loadStartupParameters()
-  {
-    StartupParameters params;
-
-    params.pipeline_mode_str = declare_parameter<std::string>("pipeline_mode", "full");
-    pipeline_mode_ = cbpwm::parsePipelineMode(params.pipeline_mode_str);
-    params.perception_mode_str = declare_parameter<std::string>("perception_mode", "FULL");
-
-    min_fitness_ = declare_parameter<double>("min_fitness", 0.3);
-    max_rmse_ = declare_parameter<double>("max_rmse", 0.05);
-    object_class_ = declare_parameter<std::string>("object_class", "concrete_block");
-    world_frame_ = declare_parameter<std::string>("world_frame", "world");
-    max_sync_delta_s_ = declare_parameter<double>("sync.max_delta_s", 0.06);
-    object_timeout_s_ = declare_parameter<double>("world_model.object_timeout_s", 10.0);
-    association_max_distance_m_ =
-      declare_parameter<double>("world_model.association_max_distance_m", 0.45);
-    association_max_age_s_ =
-      declare_parameter<double>("world_model.association_max_age_s", 20.0);
-    min_update_confidence_ =
-      declare_parameter<double>("world_model.min_update_confidence", 0.25);
-    refine_target_max_distance_m_ =
-      declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
-    scene_discovery_coarse_fallback_enabled_ =
-      declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
-    scene_discovery_coarse_fallback_min_points_ =
-      declare_parameter<int>("world_model.scene_discovery_coarse_fallback.min_points", 120);
-    coarse_surface_square_ratio_thresh_ = declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh", 1.35);
-    coarse_front_center_offset_square_m_ = declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
-    coarse_front_center_offset_rect_m_ = declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
-
-    debug_detection_overlay_enabled_ =
-      declare_parameter<bool>("debug.publish_detection_overlay", true);
-    debug_refine_grasped_roi_input_enabled_ =
-      declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
-    perf_log_timing_enabled_ = declare_parameter<bool>("perf.log_timing", true);
-    perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
-    params.marker_refresh_period_s =
-      declare_parameter<double>("world_model.marker_refresh_period_s", 0.5);
-
-    refine_grasped_use_fk_roi_ = declare_parameter<bool>("refine_grasped.use_fk_roi", true);
-    refine_grasped_tcp_frame_ =
-      declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
-    refine_grasped_camera_frame_ =
-      declare_parameter<std::string>("refine_grasped.camera_frame", "");
-    refine_grasped_camera_info_topic_ = declare_parameter<std::string>(
-      "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
-    refine_grasped_min_depth_m_ = declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
-    refine_grasped_max_depth_m_ = declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
-    refine_grasped_segmentation_timeout_s_ =
-      declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
-    refine_grasped_use_black_bg_ = declare_parameter<bool>(
-      "refine_grasped.segmentation_input.use_black_background", false);
-    refine_grasped_blur_kernel_size_ =
-      declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
-
-    refine_block_use_pose_roi_ = declare_parameter<bool>("refine_block.use_pose_roi", false);
-    params.refine_block_roi_size_m =
-      declare_parameter<std::vector<double>>("refine_block.roi_size_m", {1.20, 1.00});
-    refine_block_min_depth_m_ = declare_parameter<double>("refine_block.min_depth_m", 0.5);
-    refine_block_max_depth_m_ = declare_parameter<double>("refine_block.max_depth_m", 30.0);
-    refine_block_segmentation_timeout_s_ =
-      declare_parameter<double>("refine_block.segmentation_timeout_s", 3.0);
-    refine_block_use_black_bg_ = declare_parameter<bool>(
-      "refine_block.segmentation_input.use_black_background", false);
-    refine_block_blur_kernel_size_ =
-      declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
-
-    refine_grasped_pose_fusion_.enabled =
-      declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
-    refine_grasped_pose_fusion_.mode = declare_parameter<std::string>(
-      "refine_grasped.pose_fusion.mode",
-      "position_from_registration_orientation_from_fk");
-    refine_grasped_pose_fusion_.max_translation_jump_m = declare_parameter<double>(
-      "refine_grasped.pose_fusion.max_translation_jump_m", 0.35);
-    refine_grasped_pose_fusion_.max_z_delta_m = declare_parameter<double>(
-      "refine_grasped.pose_fusion.max_z_delta_m", 0.25);
-    refine_grasped_pose_fusion_.debug_log =
-      declare_parameter<bool>("refine_grasped.pose_fusion.debug_log", true);
-
-    params.tcp_to_block_xyz =
-      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
-    params.tcp_to_block_rpy =
-      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
-    params.refine_grasped_roi_size_m =
-      declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
-
-    // Keep for launch-file compatibility; no longer used in one-shot flow.
-    (void)declare_parameter<std::string>("calib_yaml", "");
-    return params;
-  }
-
-  double getVectorComponent(
-    const std::vector<double> & values,
-    size_t index,
-    double fallback,
-    const char * param_name)
-  {
-    if (index < values.size()) {
-      return values[index];
-    }
-    RCLCPP_WARN(
-      get_logger(),
-      "Parameter '%s' expected at least %zu entries, got %zu. Using fallback %.3f for index %zu.",
-      param_name,
-      index + 1,
-      values.size(),
-      fallback,
-      index);
-    return fallback;
-  }
-
-  void normalizeConfiguration()
-  {
-    auto clamp_min = [this](double & value, double min_value, const char * name) {
-        if (value < min_value) {
-          RCLCPP_WARN(get_logger(), "Invalid %s=%.3f, clamping to %.3f", name, value, min_value);
-          value = min_value;
-        }
-      };
-    auto normalize_blur = [this](int & kernel, const char * name) {
-        if (kernel < 1) {
-          RCLCPP_WARN(get_logger(), "Invalid %s=%d, clamping to 1", name, kernel);
-          kernel = 1;
-        }
-        if ((kernel % 2) == 0) {
-          RCLCPP_WARN(get_logger(), "Invalid %s=%d (must be odd), incrementing to %d", name, kernel, kernel + 1);
-          kernel += 1;
-        }
-      };
-    auto clamp_min_i = [this](int & value, int min_value, const char * name) {
-        if (value < min_value) {
-          RCLCPP_WARN(get_logger(), "Invalid %s=%d, clamping to %d", name, value, min_value);
-          value = min_value;
-        }
-      };
-
-    clamp_min(min_fitness_, 0.0, "min_fitness");
-    clamp_min(max_rmse_, 0.0, "max_rmse");
-    clamp_min_i(scene_discovery_coarse_fallback_min_points_, 1, "scene_discovery_coarse_fallback.min_points");
-    clamp_min(coarse_surface_square_ratio_thresh_, 1.0, "scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh");
-    clamp_min(coarse_front_center_offset_square_m_, 0.0, "scene_discovery_coarse_fallback.center_offset.square_m");
-    clamp_min(coarse_front_center_offset_rect_m_, 0.0, "scene_discovery_coarse_fallback.center_offset.rect_m");
-
-    clamp_min(roi_size_x_m_, 0.01, "refine_grasped.roi_size_m[0]");
-    clamp_min(roi_size_y_m_, 0.01, "refine_grasped.roi_size_m[1]");
-    clamp_min(refine_block_roi_size_x_m_, 0.01, "refine_block.roi_size_m[0]");
-    clamp_min(refine_block_roi_size_y_m_, 0.01, "refine_block.roi_size_m[1]");
-    if (refine_grasped_min_depth_m_ > refine_grasped_max_depth_m_) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Invalid refine_grasped depth range [%.3f, %.3f], swapping bounds",
-        refine_grasped_min_depth_m_, refine_grasped_max_depth_m_);
-      std::swap(refine_grasped_min_depth_m_, refine_grasped_max_depth_m_);
-    }
-    if (refine_block_min_depth_m_ > refine_block_max_depth_m_) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Invalid refine_block depth range [%.3f, %.3f], swapping bounds",
-        refine_block_min_depth_m_, refine_block_max_depth_m_);
-      std::swap(refine_block_min_depth_m_, refine_block_max_depth_m_);
-    }
-    normalize_blur(
-      refine_grasped_blur_kernel_size_, "refine_grasped.segmentation_input.blur_kernel_size");
-    normalize_blur(refine_block_blur_kernel_size_, "refine_block.segmentation_input.blur_kernel_size");
   }
 
   bool buildCoarseBlockFromMaskAndCloud(
