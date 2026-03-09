@@ -18,6 +18,18 @@ world_model_node:
       association_max_age_s: 20.0
       min_update_confidence: 0.25
       refine_target_max_distance_m: 1.2
+      scene_discovery_coarse_fallback:
+        enable: true
+        min_points: 120
+        surface_shape:
+          # bbox max(w,h)/min(w,h) <= threshold -> square front face
+          square_ratio_thresh: 1.35
+        center_offset:
+          # Shift coarse centroid away from camera along viewing ray:
+          # square front face -> deeper offset (0.45 m)
+          # rectangular front face -> smaller offset (0.30 m)
+          square_m: 0.45
+          rect_m: 0.30
 
     # ----------------------------------
     # Registration gating

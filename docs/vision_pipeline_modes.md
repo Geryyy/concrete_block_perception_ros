@@ -15,6 +15,10 @@ Supported modes:
 1. `SCENE_DISCOVERY`
 - Purpose: detect and register all visible blocks in current view.
 - Typical use: block inventory update after moving crane to a fixed scan viewpoint.
+- Optional fallback:
+  - when registration fails for a detection (for example lower stacked block with no visible top plane),
+  - world model can create a `POSE_COARSE` block from mask + cloud centroid for later `REFINE_BLOCK`.
+  - controlled by `world_model.scene_discovery_coarse_fallback.*` in `world_model.yaml`.
 
 2. `REFINE_BLOCK`
 - Purpose: refine one known world-model block pose.

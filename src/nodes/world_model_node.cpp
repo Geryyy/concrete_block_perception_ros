@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstring>
 #include <filesystem>
 #include <future>
 #include <limits>
@@ -22,6 +23,7 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -31,6 +33,7 @@
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
 #include "concrete_block_perception/srv/get_coarse_blocks.hpp"
+#include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
 #include "concrete_block_perception/srv/set_block_task_status.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
@@ -51,6 +54,7 @@ class WorldModelNode : public rclcpp::Node
   using SetModeSrv = concrete_block_perception::srv::SetPerceptionMode;
   using SetBlockTaskStatusSrv = concrete_block_perception::srv::SetBlockTaskStatus;
   using GetCoarseSrv = concrete_block_perception::srv::GetCoarseBlocks;
+  using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
   using RegisterBlock = concrete_block_perception::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
@@ -124,6 +128,19 @@ public:
       declare_parameter<double>("world_model.min_update_confidence", 0.25);
     refine_target_max_distance_m_ =
       declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
+    scene_discovery_coarse_fallback_enabled_ =
+      declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
+    scene_discovery_coarse_fallback_min_points_ =
+      declare_parameter<int>("world_model.scene_discovery_coarse_fallback.min_points", 120);
+    coarse_surface_square_ratio_thresh_ =
+      declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh", 1.35);
+    coarse_front_center_offset_square_m_ =
+      declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
+    coarse_front_center_offset_rect_m_ =
+      declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
     debug_detection_overlay_enabled_ = declare_parameter<bool>("debug.publish_detection_overlay", true);
     debug_refine_grasped_roi_input_enabled_ =
       declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
@@ -241,6 +258,10 @@ public:
 
     segment_client_ = create_client<SegmentSrv>(
       "/yolos_segmentor_service/segment",
+      rmw_qos_profile_services_default,
+      action_client_cb_group_);
+    register_srv_client_ = create_client<RegisterBlockSrv>(
+      "/register_block_pose",
       rmw_qos_profile_services_default,
       action_client_cb_group_);
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
@@ -498,9 +519,351 @@ private:
     }
 
     incoming.id = assigned_id;
-    incoming.pose_status = Block::POSE_PRECISE;
+    if (incoming.pose_status == Block::POSE_UNKNOWN) {
+      incoming.pose_status = Block::POSE_PRECISE;
+    }
     persistent_world_[assigned_id] = incoming;
     return true;
+  }
+
+  bool buildCoarseBlockFromMaskAndCloud(
+    uint32_t detection_id,
+    const sensor_msgs::msg::Image & mask_msg,
+    const sensor_msgs::msg::PointCloud2 & cloud_msg,
+    const std_msgs::msg::Header & header,
+    const Eigen::Vector3d * camera_origin_world,
+    Block & out_block,
+    std::string & reason) const
+  {
+    if (cloud_msg.width == 0 || cloud_msg.height == 0) {
+      reason = "cloud has zero size";
+      return false;
+    }
+    if (mask_msg.width != cloud_msg.width || mask_msg.height != cloud_msg.height) {
+      reason =
+        "mask/cloud size mismatch (mask=" + std::to_string(mask_msg.width) + "x" +
+        std::to_string(mask_msg.height) + ", cloud=" + std::to_string(cloud_msg.width) + "x" +
+        std::to_string(cloud_msg.height) + ")";
+      return false;
+    }
+
+    const cv::Mat mask = toCvMono(mask_msg);
+    if (mask.empty()) {
+      reason = "empty mask";
+      return false;
+    }
+
+    int x_offset = -1;
+    int y_offset = -1;
+    int z_offset = -1;
+    for (const auto & field : cloud_msg.fields) {
+      if (field.name == "x") {
+        x_offset = static_cast<int>(field.offset);
+      } else if (field.name == "y") {
+        y_offset = static_cast<int>(field.offset);
+      } else if (field.name == "z") {
+        z_offset = static_cast<int>(field.offset);
+      }
+    }
+    if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
+      reason = "cloud missing x/y/z fields";
+      return false;
+    }
+
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    double sum_z = 0.0;
+    int valid_points = 0;
+    std::vector<Eigen::Vector3d> selected_points;
+    selected_points.reserve(
+      static_cast<size_t>(mask_msg.width) * static_cast<size_t>(mask_msg.height) / 16U);
+
+    for (uint32_t v = 0; v < cloud_msg.height; ++v) {
+      const auto * row_ptr = cloud_msg.data.data() + static_cast<size_t>(v) * cloud_msg.row_step;
+      for (uint32_t u = 0; u < cloud_msg.width; ++u) {
+        if (mask.at<uint8_t>(static_cast<int>(v), static_cast<int>(u)) == 0U) {
+          continue;
+        }
+        const auto * point_ptr = row_ptr + static_cast<size_t>(u) * cloud_msg.point_step;
+        float x = 0.0F;
+        float y = 0.0F;
+        float z = 0.0F;
+        std::memcpy(&x, point_ptr + x_offset, sizeof(float));
+        std::memcpy(&y, point_ptr + y_offset, sizeof(float));
+        std::memcpy(&z, point_ptr + z_offset, sizeof(float));
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+          continue;
+        }
+        sum_x += static_cast<double>(x);
+        sum_y += static_cast<double>(y);
+        sum_z += static_cast<double>(z);
+        selected_points.emplace_back(x, y, z);
+        ++valid_points;
+      }
+    }
+
+    if (valid_points < scene_discovery_coarse_fallback_min_points_) {
+      reason = "too few valid masked points for coarse pose: " + std::to_string(valid_points);
+      return false;
+    }
+
+    const double inv_n = 1.0 / static_cast<double>(valid_points);
+    Eigen::Vector3d center(sum_x * inv_n, sum_y * inv_n, sum_z * inv_n);
+    cv::Rect bbox = cv::boundingRect(mask);
+    if (bbox.width > 0 && bbox.height > 0 && camera_origin_world != nullptr) {
+      const double ratio = static_cast<double>(std::max(bbox.width, bbox.height)) /
+        static_cast<double>(std::max(1, std::min(bbox.width, bbox.height)));
+      const bool is_square = ratio <= coarse_surface_square_ratio_thresh_;
+      const double depth_offset_m = is_square ? coarse_front_center_offset_square_m_ :
+        coarse_front_center_offset_rect_m_;
+      Eigen::Vector3d n_surface = Eigen::Vector3d::Zero();
+      std::string normal_reason;
+      if (estimateSurfaceNormalFromPoints(
+          selected_points, center, *camera_origin_world, n_surface, normal_reason))
+      {
+        center += n_surface * depth_offset_m;
+      } else {
+        const Eigen::Vector3d ray = center - *camera_origin_world;
+        const double ray_norm = ray.norm();
+        if (ray_norm > 1e-6) {
+          center += (ray / ray_norm) * depth_offset_m;
+        }
+      }
+    }
+
+    out_block.id = "block_" + std::to_string(detection_id);
+    out_block.pose.position.x = center.x();
+    out_block.pose.position.y = center.y();
+    out_block.pose.position.z = center.z();
+    out_block.pose.orientation.x = 0.0;
+    out_block.pose.orientation.y = 0.0;
+    out_block.pose.orientation.z = 0.0;
+    out_block.pose.orientation.w = 1.0;
+    out_block.confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
+    out_block.last_seen = header.stamp;
+    out_block.pose_status = Block::POSE_COARSE;
+    out_block.task_status = Block::TASK_FREE;
+    reason = "coarse centroid from masked cloud points=" + std::to_string(valid_points);
+    return true;
+  }
+
+  bool buildCoarseBlockFromCloudCentroid(
+    uint32_t detection_id,
+    const sensor_msgs::msg::Image & mask_msg,
+    const sensor_msgs::msg::PointCloud2 & cutout_cloud_msg,
+    const std_msgs::msg::Header & header,
+    const Eigen::Vector3d * camera_origin_world,
+    Block & out_block,
+    std::string & reason) const
+  {
+    if (cutout_cloud_msg.data.empty()) {
+      reason = "empty cutout cloud";
+      return false;
+    }
+
+    int x_offset = -1;
+    int y_offset = -1;
+    int z_offset = -1;
+    for (const auto & field : cutout_cloud_msg.fields) {
+      if (field.name == "x") {
+        x_offset = static_cast<int>(field.offset);
+      } else if (field.name == "y") {
+        y_offset = static_cast<int>(field.offset);
+      } else if (field.name == "z") {
+        z_offset = static_cast<int>(field.offset);
+      }
+    }
+    if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
+      reason = "cutout cloud missing x/y/z fields";
+      return false;
+    }
+
+    const size_t points_n = static_cast<size_t>(cutout_cloud_msg.width) *
+      static_cast<size_t>(cutout_cloud_msg.height);
+    if (points_n == 0) {
+      reason = "cutout cloud has zero points";
+      return false;
+    }
+
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    double sum_z = 0.0;
+    int valid_points = 0;
+    std::vector<Eigen::Vector3d> selected_points;
+    selected_points.reserve(points_n);
+    for (size_t i = 0; i < points_n; ++i) {
+      const auto * point_ptr = cutout_cloud_msg.data.data() + i * cutout_cloud_msg.point_step;
+      float x = 0.0F;
+      float y = 0.0F;
+      float z = 0.0F;
+      std::memcpy(&x, point_ptr + x_offset, sizeof(float));
+      std::memcpy(&y, point_ptr + y_offset, sizeof(float));
+      std::memcpy(&z, point_ptr + z_offset, sizeof(float));
+      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        continue;
+      }
+      sum_x += static_cast<double>(x);
+      sum_y += static_cast<double>(y);
+      sum_z += static_cast<double>(z);
+      selected_points.emplace_back(x, y, z);
+      ++valid_points;
+    }
+
+    if (valid_points < scene_discovery_coarse_fallback_min_points_) {
+      reason = "too few valid cutout points for coarse pose: " + std::to_string(valid_points);
+      return false;
+    }
+
+    const double inv_n = 1.0 / static_cast<double>(valid_points);
+    Eigen::Vector3d center(sum_x * inv_n, sum_y * inv_n, sum_z * inv_n);
+    cv::Mat mask = toCvMono(mask_msg);
+    if (!mask.empty() && camera_origin_world != nullptr) {
+      cv::Rect bbox = cv::boundingRect(mask);
+      if (bbox.width > 0 && bbox.height > 0) {
+        const double ratio = static_cast<double>(std::max(bbox.width, bbox.height)) /
+          static_cast<double>(std::max(1, std::min(bbox.width, bbox.height)));
+        const bool is_square = ratio <= coarse_surface_square_ratio_thresh_;
+        const double depth_offset_m = is_square ? coarse_front_center_offset_square_m_ :
+          coarse_front_center_offset_rect_m_;
+        Eigen::Vector3d n_surface = Eigen::Vector3d::Zero();
+        std::string normal_reason;
+        if (estimateSurfaceNormalFromPoints(
+            selected_points, center, *camera_origin_world, n_surface, normal_reason))
+        {
+          center += n_surface * depth_offset_m;
+        } else {
+          const Eigen::Vector3d ray = center - *camera_origin_world;
+          const double ray_norm = ray.norm();
+          if (ray_norm > 1e-6) {
+            center += (ray / ray_norm) * depth_offset_m;
+          }
+        }
+      }
+    }
+
+    out_block.id = "block_" + std::to_string(detection_id);
+    out_block.pose.position.x = center.x();
+    out_block.pose.position.y = center.y();
+    out_block.pose.position.z = center.z();
+    out_block.pose.orientation.x = 0.0;
+    out_block.pose.orientation.y = 0.0;
+    out_block.pose.orientation.z = 0.0;
+    out_block.pose.orientation.w = 1.0;
+    out_block.confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
+    out_block.last_seen = header.stamp;
+    out_block.pose_status = Block::POSE_COARSE;
+    out_block.task_status = Block::TASK_FREE;
+    reason = "coarse centroid from cutout cloud points=" + std::to_string(valid_points);
+    return true;
+  }
+
+  bool runRegistrationServiceCutoutSync(
+    const sensor_msgs::msg::Image & mask,
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    double timeout_s,
+    sensor_msgs::msg::PointCloud2 & out_cutout_cloud,
+    std::string & reason)
+  {
+    if (!register_srv_client_ || !register_srv_client_->service_is_ready()) {
+      reason = "register_block_pose service unavailable";
+      return false;
+    }
+
+    auto req = std::make_shared<RegisterBlockSrv::Request>();
+    req->mask = mask;
+    req->cloud = cloud;
+    req->object_class = object_class_;
+
+    auto future = register_srv_client_->async_send_request(req);
+    const auto ret = future.wait_for(std::chrono::duration<double>(timeout_s));
+    if (ret != std::future_status::ready) {
+      reason = "register_block_pose service timeout";
+      return false;
+    }
+    const auto res = future.get();
+    if (!res) {
+      reason = "empty register_block_pose response";
+      return false;
+    }
+    if (res->cutout_cloud.data.empty()) {
+      reason = "register_block_pose returned empty cutout_cloud";
+      return false;
+    }
+    out_cutout_cloud = res->cutout_cloud;
+    reason = "cutout_cloud received from register_block_pose";
+    return true;
+  }
+
+  bool estimateSurfaceNormalFromPoints(
+    const std::vector<Eigen::Vector3d> & points_world,
+    const Eigen::Vector3d & center_world,
+    const Eigen::Vector3d & camera_origin_world,
+    Eigen::Vector3d & out_normal_world,
+    std::string & reason) const
+  {
+    if (points_world.size() < 20U) {
+      reason = "not enough points for surface-normal PCA";
+      return false;
+    }
+
+    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+    for (const auto & p : points_world) {
+      const Eigen::Vector3d d = p - center_world;
+      cov.noalias() += d * d.transpose();
+    }
+    cov /= static_cast<double>(points_world.size());
+
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+    if (solver.info() != Eigen::Success) {
+      reason = "eigendecomposition failed";
+      return false;
+    }
+
+    Eigen::Vector3d n = solver.eigenvectors().col(0);
+    const double n_norm = n.norm();
+    if (n_norm < 1e-6) {
+      reason = "degenerate normal";
+      return false;
+    }
+    n /= n_norm;
+
+    // Orient normal from visible/front surface into block interior (away from camera).
+    const Eigen::Vector3d cam_to_center = center_world - camera_origin_world;
+    if (n.dot(cam_to_center) < 0.0) {
+      n = -n;
+    }
+
+    out_normal_world = n;
+    return true;
+  }
+
+  bool lookupFrameOriginInWorld(
+    const std_msgs::msg::Header & stamped_header,
+    Eigen::Vector3d & origin_world,
+    std::string & reason)
+  {
+    if (!tf_buffer_) {
+      reason = "TF buffer unavailable";
+      return false;
+    }
+    std::string source_frame = stamped_header.frame_id;
+    if (source_frame.empty()) {
+      if (!resolveCameraFrame(stamped_header, source_frame, reason)) {
+        return false;
+      }
+    }
+    try {
+      const auto tf_w_s = tf_buffer_->lookupTransform(
+        world_frame_, source_frame, stamped_header.stamp, tf2::durationFromSec(0.1));
+      origin_world =
+        Eigen::Vector3d(tf_w_s.transform.translation.x, tf_w_s.transform.translation.y,
+        tf_w_s.transform.translation.z);
+      return true;
+    } catch (const tf2::TransformException & ex) {
+      reason = std::string("TF lookup failed for camera origin (") + world_frame_ + " <- " +
+        source_frame + "): " + ex.what();
+      return false;
+    }
   }
 
   void resetBusy()
@@ -1839,6 +2202,17 @@ private:
 
           const auto t_reg_start = std::chrono::steady_clock::now();
           size_t registrations_ok = 0;
+          size_t coarse_upserts_ok = 0;
+          Eigen::Vector3d camera_origin_world = Eigen::Vector3d::Zero();
+          std::string camera_origin_reason;
+          const bool have_camera_origin = lookupFrameOriginInWorld(cloud->header, camera_origin_world,
+              camera_origin_reason);
+          if (!have_camera_origin) {
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 3000,
+              "Scene-discovery coarse center offset disabled for this frame: %s",
+              camera_origin_reason.c_str());
+          }
           const bool targeted_refine =
             (run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
             run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
@@ -1959,6 +2333,105 @@ private:
                     upsert_reason.c_str());
                 }
               } else {
+                if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery &&
+                  scene_discovery_coarse_fallback_enabled_)
+                {
+                  Block coarse_block;
+                  std::string coarse_reason;
+                  const bool coarse_ok = buildCoarseBlockFromMaskAndCloud(
+                    candidate.first,
+                    candidate.second,
+                    *cloud,
+                    cloud->header,
+                    have_camera_origin ? &camera_origin_world : nullptr,
+                    coarse_block,
+                    coarse_reason);
+                  if (coarse_ok) {
+                    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+                    std::string assigned_id;
+                    std::string upsert_reason;
+                    const bool upsert_ok = upsertRegisteredBlock(
+                      coarse_block,
+                      run_request,
+                      cloud->header,
+                      assigned_id,
+                      upsert_reason);
+                    if (upsert_ok) {
+                      ++coarse_upserts_ok;
+                      RCLCPP_WARN(
+                        get_logger(),
+                        "Registration rejected for block_%u (%s). Coarse fallback accepted: incoming=%s assigned=%s",
+                        candidate.first,
+                        reason.c_str(),
+                        coarse_block.id.c_str(),
+                        assigned_id.c_str());
+                      continue;
+                    }
+                    RCLCPP_WARN(
+                      get_logger(),
+                      "Registration rejected for block_%u (%s). Coarse fallback rejected: %s",
+                      candidate.first,
+                      reason.c_str(),
+                      upsert_reason.c_str());
+                  } else {
+                    sensor_msgs::msg::PointCloud2 cutout_cloud;
+                    std::string cutout_reason;
+                    const bool got_cutout = runRegistrationServiceCutoutSync(
+                      candidate.second, *cloud, run_request.registration_timeout_s, cutout_cloud, cutout_reason);
+                    if (got_cutout) {
+                      const bool coarse_from_cutout_ok = buildCoarseBlockFromCloudCentroid(
+                        candidate.first,
+                        candidate.second,
+                        cutout_cloud,
+                        cutout_cloud.header,
+                        have_camera_origin ? &camera_origin_world : nullptr,
+                        coarse_block,
+                        coarse_reason);
+                      if (coarse_from_cutout_ok) {
+                        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+                        std::string assigned_id;
+                        std::string upsert_reason;
+                        const bool upsert_ok = upsertRegisteredBlock(
+                          coarse_block,
+                          run_request,
+                          cloud->header,
+                          assigned_id,
+                          upsert_reason);
+                        if (upsert_ok) {
+                          ++coarse_upserts_ok;
+                          RCLCPP_WARN(
+                            get_logger(),
+                            "Registration rejected for block_%u (%s). Coarse fallback (cutout centroid) accepted: incoming=%s assigned=%s",
+                            candidate.first,
+                            reason.c_str(),
+                            coarse_block.id.c_str(),
+                            assigned_id.c_str());
+                          continue;
+                        }
+                        RCLCPP_WARN(
+                          get_logger(),
+                          "Registration rejected for block_%u (%s). Coarse fallback (cutout centroid) rejected: %s",
+                          candidate.first,
+                          reason.c_str(),
+                          upsert_reason.c_str());
+                      } else {
+                        RCLCPP_WARN(
+                          get_logger(),
+                          "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
+                          candidate.first,
+                          reason.c_str(),
+                          coarse_reason.c_str());
+                      }
+                    } else {
+                      RCLCPP_WARN(
+                        get_logger(),
+                        "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
+                        candidate.first,
+                        reason.c_str(),
+                        cutout_reason.c_str());
+                    }
+                  }
+                }
                 RCLCPP_WARN(
                   get_logger(),
                   "Registration rejected for block_%u: %s",
@@ -1986,7 +2459,8 @@ private:
             "Pose estimation finished (detections=" + std::to_string(seg_detection_count) +
             ", tracked=" + std::to_string(tracked_count) +
             ", registration_candidates=" + std::to_string(registration_candidates) +
-            ", registrations=" + std::to_string(registrations_ok) + ").");
+            ", registrations=" + std::to_string(registrations_ok) +
+            ", coarse_registrations=" + std::to_string(coarse_upserts_ok) + ").");
 
           resetBusy();
         } catch (const std::exception & e) {
@@ -2003,6 +2477,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
+  rclcpp::Client<RegisterBlockSrv>::SharedPtr register_srv_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
@@ -2087,6 +2562,11 @@ private:
   double refine_block_segmentation_timeout_s_{3.0};
   bool refine_block_use_black_bg_{false};
   int refine_block_blur_kernel_size_{31};
+  bool scene_discovery_coarse_fallback_enabled_{true};
+  int scene_discovery_coarse_fallback_min_points_{120};
+  double coarse_surface_square_ratio_thresh_{1.35};
+  double coarse_front_center_offset_square_m_{0.45};
+  double coarse_front_center_offset_rect_m_{0.30};
   PoseFusionConfig refine_grasped_pose_fusion_;
 
 };

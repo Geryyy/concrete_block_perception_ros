@@ -135,6 +135,10 @@ private:
     }
 
     auto output = pipeline_->run(input);
+    response->cutout_cloud = open3d_to_pointcloud2_colored(
+      output.debug_scene,
+      config_.world_frame,
+      rclcpp::Time(request->cloud.header.stamp));
     if (!output.success) {
       maybeDumpFailurePackage(request->cloud, request->mask, output);
       response->success = false;
