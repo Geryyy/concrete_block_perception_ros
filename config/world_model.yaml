@@ -94,3 +94,18 @@ world_model_node:
         max_translation_jump_m: 0.35
         max_z_delta_m: 0.25
         debug_log: true
+
+    # ----------------------------------
+    # REFINE_BLOCK optional targeted ROI mode
+    # Uses target block pose from persistent world model as ROI seed.
+    # Falls back to full-image REFINE_BLOCK when ROI preconditions fail.
+    # ----------------------------------
+    refine_block:
+      use_pose_roi: false
+      roi_size_m: [1.20, 1.00]
+      min_depth_m: 0.5
+      max_depth_m: 30.0
+      segmentation_timeout_s: 3.0
+      segmentation_input:
+        use_black_background: false
+        blur_kernel_size: 31

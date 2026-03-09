@@ -20,6 +20,10 @@ Supported modes:
 - Purpose: refine one known world-model block pose.
 - Input: `target_block_id` should be set (for example `wm_block_1`).
 - Typical use: refine already placed reference block before relative assembly step.
+- Optional robust variant: `refine_block.use_pose_roi=true`
+  - uses persistent world-model target pose as ROI seed,
+  - runs ROI-focused segmentation + registration,
+  - falls back to default full-image `REFINE_BLOCK` if ROI preconditions fail.
 
 3. `REFINE_GRASPED`
 - Purpose: refine currently grasped block pose.
@@ -132,4 +136,3 @@ Outputs per failure:
 
 Default location in installed workspace:
 - `/workspaces/ros2_baustelle_ws/install/concrete_block_perception/share/concrete_block_perception/config/dump/`
-

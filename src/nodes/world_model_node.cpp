@@ -88,6 +88,17 @@ class WorldModelNode : public rclcpp::Node
     bool debug_log{true};
   };
 
+  struct RoiInputConfig
+  {
+    double roi_size_x_m{0.60};
+    double roi_size_y_m{0.40};
+    double min_depth_m{0.5};
+    double max_depth_m{30.0};
+    double segmentation_timeout_s{3.0};
+    bool use_black_bg{false};
+    int blur_kernel_size{31};
+  };
+
 public:
   WorldModelNode()
   : Node("block_world_model_node")
@@ -138,6 +149,20 @@ public:
       declare_parameter<bool>("refine_grasped.segmentation_input.use_black_background", false);
     refine_grasped_blur_kernel_size_ =
       declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
+    refine_block_use_pose_roi_ =
+      declare_parameter<bool>("refine_block.use_pose_roi", false);
+    const auto refine_block_roi_size_m =
+      declare_parameter<std::vector<double>>("refine_block.roi_size_m", {1.20, 1.00});
+    refine_block_min_depth_m_ =
+      declare_parameter<double>("refine_block.min_depth_m", 0.5);
+    refine_block_max_depth_m_ =
+      declare_parameter<double>("refine_block.max_depth_m", 30.0);
+    refine_block_segmentation_timeout_s_ =
+      declare_parameter<double>("refine_block.segmentation_timeout_s", 3.0);
+    refine_block_use_black_bg_ =
+      declare_parameter<bool>("refine_block.segmentation_input.use_black_background", false);
+    refine_block_blur_kernel_size_ =
+      declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
     refine_grasped_pose_fusion_.enabled =
       declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
     refine_grasped_pose_fusion_.mode = declare_parameter<std::string>(
@@ -192,6 +217,10 @@ public:
 
     roi_size_x_m_ = (roi_size_m.size() >= 1) ? roi_size_m[0] : 0.60;
     roi_size_y_m_ = (roi_size_m.size() >= 2) ? roi_size_m[1] : 0.40;
+    refine_block_roi_size_x_m_ =
+      (refine_block_roi_size_m.size() >= 1) ? refine_block_roi_size_m[0] : 1.20;
+    refine_block_roi_size_y_m_ =
+      (refine_block_roi_size_m.size() >= 2) ? refine_block_roi_size_m[1] : 1.00;
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -308,6 +337,16 @@ public:
         refine_grasped_pose_fusion_.max_translation_jump_m,
         refine_grasped_pose_fusion_.max_z_delta_m,
         refine_grasped_pose_fusion_.debug_log ? "true" : "false");
+    }
+    if (refine_block_use_pose_roi_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "REFINE_BLOCK pose+ROI enabled | roi_size=[%.2f, %.2f]m depth=[%.2f, %.2f]m seg_timeout=%.2fs",
+        refine_block_roi_size_x_m_,
+        refine_block_roi_size_y_m_,
+        refine_block_min_depth_m_,
+        refine_block_max_depth_m_,
+        refine_block_segmentation_timeout_s_);
     }
   }
 
@@ -701,6 +740,59 @@ private:
     }
   }
 
+  bool resolveCameraFrame(
+    const std_msgs::msg::Header & header,
+    std::string & camera_frame,
+    std::string & reason)
+  {
+    camera_frame = refine_grasped_camera_frame_;
+    if (camera_frame.empty()) {
+      camera_frame = header.frame_id;
+    }
+    if (camera_frame.empty()) {
+      std::lock_guard<std::mutex> lock(camera_info_mutex_);
+      camera_frame = camera_info_frame_id_;
+    }
+    if (camera_frame.empty()) {
+      reason = "camera frame unresolved (no override, image frame, or camera_info frame)";
+      return false;
+    }
+    return true;
+  }
+
+  bool worldPointToCamera(
+    const std_msgs::msg::Header & header,
+    const Eigen::Vector3d & p_world,
+    Eigen::Vector3d & p_camera,
+    std::string & reason)
+  {
+    if (!tf_buffer_) {
+      reason = "TF buffer not initialized";
+      return false;
+    }
+
+    std::string camera_frame;
+    if (!resolveCameraFrame(header, camera_frame, reason)) {
+      return false;
+    }
+
+    try {
+      const auto tf_camera_world = tf_buffer_->lookupTransform(
+        camera_frame,
+        world_frame_,
+        rclcpp::Time(header.stamp),
+        rclcpp::Duration::from_seconds(0.2));
+      const Eigen::Matrix4d T_camera_world = transformToEigen(tf_camera_world);
+      const Eigen::Vector4d p_world_h(p_world.x(), p_world.y(), p_world.z(), 1.0);
+      const Eigen::Vector4d p_camera_h = T_camera_world * p_world_h;
+      p_camera = p_camera_h.head<3>();
+      return true;
+    } catch (const tf2::TransformException & ex) {
+      reason = std::string("TF lookup failed: ") + ex.what();
+      return false;
+    }
+  }
+
   static geometry_msgs::msg::Quaternion toGeometryMsgQuaternion(const Eigen::Quaterniond & q)
   {
     geometry_msgs::msg::Quaternion out;
@@ -714,6 +806,7 @@ private:
   bool buildRoiMaskFromPrediction(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const Eigen::Vector3d & p_camera,
+    const RoiInputConfig & roi_cfg,
     cv::Mat & roi_mask,
     cv::Rect & roi_rect,
     std::string & reason)
@@ -729,7 +822,7 @@ private:
     }
 
     const double z = p_camera.z();
-    if (!std::isfinite(z) || z < refine_grasped_min_depth_m_ || z > refine_grasped_max_depth_m_) {
+    if (!std::isfinite(z) || z < roi_cfg.min_depth_m || z > roi_cfg.max_depth_m) {
       reason = "predicted block depth out of bounds: z=" + std::to_string(z);
       return false;
     }
@@ -741,8 +834,10 @@ private:
       return false;
     }
 
-    const int roi_w_px = std::max(1, static_cast<int>(std::lround(intr.fx * roi_size_x_m_ / z)));
-    const int roi_h_px = std::max(1, static_cast<int>(std::lround(intr.fy * roi_size_y_m_ / z)));
+    const int roi_w_px = std::max(
+      1, static_cast<int>(std::lround(intr.fx * roi_cfg.roi_size_x_m / z)));
+    const int roi_h_px = std::max(
+      1, static_cast<int>(std::lround(intr.fy * roi_cfg.roi_size_y_m / z)));
     cv::Rect requested_roi(
       static_cast<int>(std::lround(u)) - roi_w_px / 2,
       static_cast<int>(std::lround(v)) - roi_h_px / 2,
@@ -757,6 +852,68 @@ private:
 
     roi_mask = cv::Mat::zeros(image_rect.height, image_rect.width, CV_8UC1);
     cv::rectangle(roi_mask, roi_rect, cv::Scalar(255), cv::FILLED);
+    return true;
+  }
+
+  sensor_msgs::msg::Image::SharedPtr buildRoiSegmentationInputImage(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const cv::Rect & roi_rect,
+    const RoiInputConfig & roi_cfg)
+  {
+    cv::Mat image_bgr = toCvBgr(*image);
+    cv::Mat roi_image_full;
+    if (roi_cfg.use_black_bg) {
+      roi_image_full = cv::Mat::zeros(image_bgr.size(), image_bgr.type());
+    } else {
+      int k = std::max(1, roi_cfg.blur_kernel_size);
+      if ((k % 2) == 0) {
+        ++k;
+      }
+      cv::GaussianBlur(image_bgr, roi_image_full, cv::Size(k, k), 0.0, 0.0);
+    }
+    image_bgr(roi_rect).copyTo(roi_image_full(roi_rect));
+    return cv_bridge::CvImage(image->header, "bgr8", roi_image_full).toImageMsg();
+  }
+
+  bool roiSegmentationToFullMask(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const cv::Mat & roi_mask,
+    const sensor_msgs::msg::Image::SharedPtr & roi_image_msg,
+    const RoiInputConfig & roi_cfg,
+    cv::Mat & full_seg_mask,
+    size_t & detections_count,
+    std::string & reason)
+  {
+    SegmentSrv::Response::SharedPtr seg_res;
+    if (!runSegmentationSync(*roi_image_msg, roi_cfg.segmentation_timeout_s, seg_res, reason)) {
+      return false;
+    }
+
+    cv::Mat seg_mask_roi = toCvMono(seg_res->mask);
+    if (seg_mask_roi.empty()) {
+      reason = "empty mask";
+      return false;
+    }
+
+    if (seg_mask_roi.cols != static_cast<int>(image->width) ||
+      seg_mask_roi.rows != static_cast<int>(image->height))
+    {
+      cv::resize(
+        seg_mask_roi,
+        seg_mask_roi,
+        cv::Size(static_cast<int>(image->width), static_cast<int>(image->height)),
+        0.0,
+        0.0,
+        cv::INTER_NEAREST);
+    }
+
+    full_seg_mask = seg_mask_roi.clone();
+    cv::bitwise_and(full_seg_mask, roi_mask, full_seg_mask);
+    detections_count = seg_res->detections.detections.size();
+    if (cv::countNonZero(full_seg_mask) == 0) {
+      reason = "segmentation returned empty object mask";
+      return false;
+    }
     return true;
   }
 
@@ -832,7 +989,15 @@ private:
 
     cv::Mat roi_mask;
     cv::Rect roi_rect;
-    if (!buildRoiMaskFromPrediction(image, p_camera, roi_mask, roi_rect, reason)) {
+    RoiInputConfig roi_cfg;
+    roi_cfg.roi_size_x_m = roi_size_x_m_;
+    roi_cfg.roi_size_y_m = roi_size_y_m_;
+    roi_cfg.min_depth_m = refine_grasped_min_depth_m_;
+    roi_cfg.max_depth_m = refine_grasped_max_depth_m_;
+    roi_cfg.segmentation_timeout_s = refine_grasped_segmentation_timeout_s_;
+    roi_cfg.use_black_bg = refine_grasped_use_black_bg_;
+    roi_cfg.blur_kernel_size = refine_grasped_blur_kernel_size_;
+    if (!buildRoiMaskFromPrediction(image, p_camera, roi_cfg, roi_mask, roi_rect, reason)) {
       RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
       publishPersistentWorld(cloud->header);
       completeOneShotRequest(
@@ -843,71 +1008,29 @@ private:
       return;
     }
 
-    cv::Mat image_bgr = toCvBgr(*image);
-    cv::Mat roi_image_full;
-    if (refine_grasped_use_black_bg_) {
-      roi_image_full = cv::Mat::zeros(image_bgr.size(), image_bgr.type());
-    } else {
-      int k = std::max(1, refine_grasped_blur_kernel_size_);
-      if ((k % 2) == 0) {
-        ++k;
-      }
-      cv::GaussianBlur(image_bgr, roi_image_full, cv::Size(k, k), 0.0, 0.0);
-    }
-    image_bgr(roi_rect).copyTo(roi_image_full(roi_rect));
-    auto roi_image_msg = cv_bridge::CvImage(image->header, "bgr8", roi_image_full).toImageMsg();
+    auto roi_image_msg = buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
 
     if (debug_refine_grasped_roi_input_enabled_ && refine_grasped_roi_input_pub_) {
       refine_grasped_roi_input_pub_->publish(*roi_image_msg);
     }
 
-    SegmentSrv::Response::SharedPtr seg_res;
-    if (!runSegmentationSync(*roi_image_msg, refine_grasped_segmentation_timeout_s_, seg_res, reason)) {
+    cv::Mat full_seg_mask;
+    size_t detections_count = 0;
+    if (!roiSegmentationToFullMask(
+        image,
+        roi_mask,
+        roi_image_msg,
+        roi_cfg,
+        full_seg_mask,
+        detections_count,
+        reason))
+    {
       RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation failed: %s", reason.c_str());
       publishPersistentWorld(cloud->header);
       completeOneShotRequest(
         run_request.sequence,
         false,
         "REFINE_GRASPED ROI segmentation failed: " + reason);
-      resetBusy();
-      return;
-    }
-
-    cv::Mat seg_mask_roi = toCvMono(seg_res->mask);
-    if (seg_mask_roi.empty()) {
-      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation failed: empty mask.");
-      publishPersistentWorld(cloud->header);
-      completeOneShotRequest(
-        run_request.sequence,
-        false,
-        "REFINE_GRASPED ROI segmentation failed: empty mask.");
-      resetBusy();
-      return;
-    }
-
-    if (seg_mask_roi.cols != static_cast<int>(image->width) ||
-      seg_mask_roi.rows != static_cast<int>(image->height))
-    {
-      cv::resize(
-        seg_mask_roi,
-        seg_mask_roi,
-        cv::Size(static_cast<int>(image->width), static_cast<int>(image->height)),
-        0.0,
-        0.0,
-        cv::INTER_NEAREST);
-    }
-
-    cv::Mat full_seg_mask = seg_mask_roi.clone();
-    cv::bitwise_and(full_seg_mask, roi_mask, full_seg_mask);
-
-    const int seg_nonzero = cv::countNonZero(full_seg_mask);
-    if (seg_nonzero == 0) {
-      RCLCPP_WARN(get_logger(), "REFINE_GRASPED FK+ROI segmentation produced zero mask pixels.");
-      publishPersistentWorld(cloud->header);
-      completeOneShotRequest(
-        run_request.sequence,
-        false,
-        "REFINE_GRASPED ROI segmentation returned empty object mask.");
       resetBusy();
       return;
     }
@@ -923,8 +1046,8 @@ private:
       roi_rect.y,
       roi_rect.width,
       roi_rect.height,
-      seg_res->detections.detections.size(),
-      seg_nonzero);
+      detections_count,
+      cv::countNonZero(full_seg_mask));
 
     auto full_mask_msg = cv_bridge::CvImage(image->header, "mono8", full_seg_mask).toImageMsg();
     Block block;
@@ -1043,6 +1166,167 @@ private:
       ("Pose estimation finished (mode=REFINE_GRASPED_FK_ROI, registration_candidates=1, registrations=0, reason=" +
       reg_reason + ")."));
     resetBusy();
+  }
+
+  bool tryProcessRefineBlockWithPoseRoi(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const OneShotRequest & run_request,
+    const std::chrono::steady_clock::time_point & t_start)
+  {
+    if (!refine_block_use_pose_roi_ || run_request.mode != cbpwm::OneShotMode::kRefineBlock) {
+      return false;
+    }
+    if (run_request.target_block_id.empty()) {
+      return false;
+    }
+    if (!action_client_->action_server_is_ready()) {
+      completeOneShotRequest(run_request.sequence, false, "Registration action unavailable.");
+      resetBusy();
+      return true;
+    }
+
+    Block expected_target;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(run_request.target_block_id);
+      if (it == persistent_world_.end()) {
+        RCLCPP_WARN(
+          get_logger(),
+          "REFINE_BLOCK pose+ROI fallback: target '%s' not found in world model.",
+          run_request.target_block_id.c_str());
+        return false;
+      }
+      expected_target = it->second;
+    }
+
+    RoiInputConfig roi_cfg;
+    roi_cfg.roi_size_x_m = refine_block_roi_size_x_m_;
+    roi_cfg.roi_size_y_m = refine_block_roi_size_y_m_;
+    roi_cfg.min_depth_m = refine_block_min_depth_m_;
+    roi_cfg.max_depth_m = refine_block_max_depth_m_;
+    roi_cfg.segmentation_timeout_s = refine_block_segmentation_timeout_s_;
+    roi_cfg.use_black_bg = refine_block_use_black_bg_;
+    roi_cfg.blur_kernel_size = refine_block_blur_kernel_size_;
+
+    const Eigen::Vector3d p_world(
+      expected_target.pose.position.x,
+      expected_target.pose.position.y,
+      expected_target.pose.position.z);
+    Eigen::Vector3d p_camera = Eigen::Vector3d::Zero();
+    std::string reason;
+    if (!worldPointToCamera(image->header, p_world, p_camera, reason)) {
+      RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI fallback: %s", reason.c_str());
+      return false;
+    }
+
+    cv::Mat roi_mask;
+    cv::Rect roi_rect;
+    if (!buildRoiMaskFromPrediction(image, p_camera, roi_cfg, roi_mask, roi_rect, reason)) {
+      RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI fallback: %s", reason.c_str());
+      return false;
+    }
+
+    auto roi_image_msg = buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
+    cv::Mat full_seg_mask;
+    size_t detections_count = 0;
+    if (!roiSegmentationToFullMask(
+        image,
+        roi_mask,
+        roi_image_msg,
+        roi_cfg,
+        full_seg_mask,
+        detections_count,
+        reason))
+    {
+      RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI failed: %s", reason.c_str());
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        false,
+        "REFINE_BLOCK ROI segmentation failed: " + reason);
+      resetBusy();
+      return true;
+    }
+
+    if (debug_detection_overlay_enabled_ && det_debug_pub_) {
+      publishRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask);
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "REFINE_BLOCK pose+ROI: target=%s roi=[x=%d y=%d w=%d h=%d] detections=%zu mask_pixels=%d",
+      run_request.target_block_id.c_str(),
+      roi_rect.x,
+      roi_rect.y,
+      roi_rect.width,
+      roi_rect.height,
+      detections_count,
+      cv::countNonZero(full_seg_mask));
+
+    auto full_mask_msg = cv_bridge::CvImage(image->header, "mono8", full_seg_mask).toImageMsg();
+    Block block;
+    std::string reg_reason;
+    const auto t_reg_start = std::chrono::steady_clock::now();
+    const bool registration_ok = runRegistrationSync(
+      1U,
+      *full_mask_msg,
+      *cloud,
+      cloud->header,
+      run_request.registration_timeout_s,
+      block,
+      reg_reason);
+    const auto t_reg_end = std::chrono::steady_clock::now();
+
+    size_t registrations_ok = 0;
+    if (registration_ok) {
+      const double dist = blockDistance(block, expected_target);
+      if (dist > refine_target_max_distance_m_) {
+        reg_reason = "registered pose too far from target: dist=" + std::to_string(dist) + " m";
+        RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI rejected: %s", reg_reason.c_str());
+      } else {
+        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+        std::string assigned_id;
+        std::string upsert_reason;
+        const bool upsert_ok = upsertRegisteredBlock(
+          block,
+          run_request,
+          cloud->header,
+          assigned_id,
+          upsert_reason);
+        if (upsert_ok) {
+          ++registrations_ok;
+          RCLCPP_INFO(
+            get_logger(),
+            "REFINE_BLOCK pose+ROI accepted: target=%s assigned=%s dist=%.3f m",
+            run_request.target_block_id.c_str(),
+            assigned_id.c_str(),
+            dist);
+        } else {
+          reg_reason = upsert_reason;
+          RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI rejected: %s", reg_reason.c_str());
+        }
+      }
+    } else {
+      RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI registration failed: %s", reg_reason.c_str());
+    }
+
+    const auto reg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      t_reg_end - t_reg_start).count();
+    const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      t_reg_end - t_start).count();
+    recordTiming(0, 0, reg_ms, total_ms);
+
+    publishPersistentWorld(cloud->header);
+    completeOneShotRequest(
+      run_request.sequence,
+      registrations_ok > 0,
+      registrations_ok > 0 ?
+      ("Pose estimation finished (mode=REFINE_BLOCK_POSE_ROI, registration_candidates=1, registrations=1).") :
+      ("Pose estimation finished (mode=REFINE_BLOCK_POSE_ROI, registration_candidates=1, registrations=0, reason=" +
+      reg_reason + ")."));
+    resetBusy();
+    return true;
   }
 
   void completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
@@ -1406,6 +1690,11 @@ private:
 
     if (run_request.mode == cbpwm::OneShotMode::kRefineGrasped && refine_grasped_use_fk_roi_) {
       processRefineGraspedWithFkRoi(image, cloud, run_request, t_start);
+      return;
+    }
+    if (run_request.mode == cbpwm::OneShotMode::kRefineBlock &&
+      tryProcessRefineBlockWithPoseRoi(image, cloud, run_request, t_start))
+    {
       return;
     }
 
@@ -1790,6 +2079,14 @@ private:
   double refine_grasped_segmentation_timeout_s_{3.0};
   bool refine_grasped_use_black_bg_{false};
   int refine_grasped_blur_kernel_size_{31};
+  bool refine_block_use_pose_roi_{false};
+  double refine_block_roi_size_x_m_{1.20};
+  double refine_block_roi_size_y_m_{1.00};
+  double refine_block_min_depth_m_{0.5};
+  double refine_block_max_depth_m_{30.0};
+  double refine_block_segmentation_timeout_s_{3.0};
+  bool refine_block_use_black_bg_{false};
+  int refine_block_blur_kernel_size_{31};
   PoseFusionConfig refine_grasped_pose_fusion_;
 
 };
