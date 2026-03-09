@@ -143,6 +143,7 @@ ament_target_dependencies(block_registration_node
 # ============================================================
 add_executable(world_model_node
   src/nodes/world_model_node.cpp
+  src/utils/coarse_pose_utils.cpp
   src/utils/io_utils.cpp
   src/utils/img_utils.cpp
   src/utils/block_utils.cpp

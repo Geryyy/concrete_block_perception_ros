@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
-#include <cstring>
 #include <filesystem>
 #include <future>
 #include <limits>
@@ -23,7 +22,6 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -37,6 +35,7 @@
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
 #include "concrete_block_perception/srv/set_block_task_status.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
+#include "concrete_block_perception/utils/coarse_pose_utils.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
 #include "ros2_yolos_cpp/srv/segment_image.hpp"
@@ -72,6 +71,12 @@ class WorldModelNode : public rclcpp::Node
     double registration_timeout_s{3.0};
   };
 
+  struct RegistrationCounters
+  {
+    size_t registrations_ok{0};
+    size_t coarse_upserts_ok{0};
+  };
+
   struct CameraIntrinsics
   {
     bool valid{false};
@@ -103,104 +108,26 @@ class WorldModelNode : public rclcpp::Node
     int blur_kernel_size{31};
   };
 
+  struct StartupParameters
+  {
+    std::string pipeline_mode_str{"full"};
+    std::string perception_mode_str{"FULL"};
+    double marker_refresh_period_s{0.5};
+    std::vector<double> tcp_to_block_xyz{0.0, 0.0, 0.0};
+    std::vector<double> tcp_to_block_rpy{0.0, 0.0, 0.0};
+    std::vector<double> refine_grasped_roi_size_m{0.60, 0.40};
+    std::vector<double> refine_block_roi_size_m{1.20, 1.00};
+  };
+
 public:
   WorldModelNode()
   : Node("block_world_model_node")
   {
     run_pose_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     action_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-
-    const std::string pipeline_mode_str = declare_parameter<std::string>("pipeline_mode", "full");
-    pipeline_mode_ = cbpwm::parsePipelineMode(pipeline_mode_str);
-
-    const std::string perception_mode_str = declare_parameter<std::string>("perception_mode", "FULL");
-    min_fitness_ = declare_parameter<double>("min_fitness", 0.3);
-    max_rmse_ = declare_parameter<double>("max_rmse", 0.05);
-    object_class_ = declare_parameter<std::string>("object_class", "concrete_block");
-    world_frame_ = declare_parameter<std::string>("world_frame", "world");
-    max_sync_delta_s_ = declare_parameter<double>("sync.max_delta_s", 0.06);
-    object_timeout_s_ = declare_parameter<double>("world_model.object_timeout_s", 10.0);
-    association_max_distance_m_ =
-      declare_parameter<double>("world_model.association_max_distance_m", 0.45);
-    association_max_age_s_ =
-      declare_parameter<double>("world_model.association_max_age_s", 20.0);
-    min_update_confidence_ =
-      declare_parameter<double>("world_model.min_update_confidence", 0.25);
-    refine_target_max_distance_m_ =
-      declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
-    scene_discovery_coarse_fallback_enabled_ =
-      declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
-    scene_discovery_coarse_fallback_min_points_ =
-      declare_parameter<int>("world_model.scene_discovery_coarse_fallback.min_points", 120);
-    coarse_surface_square_ratio_thresh_ =
-      declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh", 1.35);
-    coarse_front_center_offset_square_m_ =
-      declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
-    coarse_front_center_offset_rect_m_ =
-      declare_parameter<double>(
-      "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
-    debug_detection_overlay_enabled_ = declare_parameter<bool>("debug.publish_detection_overlay", true);
-    debug_refine_grasped_roi_input_enabled_ =
-      declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
-    perf_log_timing_enabled_ = declare_parameter<bool>("perf.log_timing", true);
-    perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
-    const double marker_refresh_period_s =
-      declare_parameter<double>("world_model.marker_refresh_period_s", 0.5);
-    refine_grasped_use_fk_roi_ = declare_parameter<bool>("refine_grasped.use_fk_roi", true);
-    refine_grasped_tcp_frame_ =
-      declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
-    refine_grasped_camera_frame_ =
-      declare_parameter<std::string>("refine_grasped.camera_frame", "");
-    refine_grasped_camera_info_topic_ =
-      declare_parameter<std::string>(
-      "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
-    refine_grasped_min_depth_m_ =
-      declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
-    refine_grasped_max_depth_m_ =
-      declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
-    refine_grasped_segmentation_timeout_s_ =
-      declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
-    refine_grasped_use_black_bg_ =
-      declare_parameter<bool>("refine_grasped.segmentation_input.use_black_background", false);
-    refine_grasped_blur_kernel_size_ =
-      declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
-    refine_block_use_pose_roi_ =
-      declare_parameter<bool>("refine_block.use_pose_roi", false);
-    const auto refine_block_roi_size_m =
-      declare_parameter<std::vector<double>>("refine_block.roi_size_m", {1.20, 1.00});
-    refine_block_min_depth_m_ =
-      declare_parameter<double>("refine_block.min_depth_m", 0.5);
-    refine_block_max_depth_m_ =
-      declare_parameter<double>("refine_block.max_depth_m", 30.0);
-    refine_block_segmentation_timeout_s_ =
-      declare_parameter<double>("refine_block.segmentation_timeout_s", 3.0);
-    refine_block_use_black_bg_ =
-      declare_parameter<bool>("refine_block.segmentation_input.use_black_background", false);
-    refine_block_blur_kernel_size_ =
-      declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
-    refine_grasped_pose_fusion_.enabled =
-      declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
-    refine_grasped_pose_fusion_.mode = declare_parameter<std::string>(
-      "refine_grasped.pose_fusion.mode",
-      "position_from_registration_orientation_from_fk");
-    refine_grasped_pose_fusion_.max_translation_jump_m = declare_parameter<double>(
-      "refine_grasped.pose_fusion.max_translation_jump_m", 0.35);
-    refine_grasped_pose_fusion_.max_z_delta_m = declare_parameter<double>(
-      "refine_grasped.pose_fusion.max_z_delta_m", 0.25);
-    refine_grasped_pose_fusion_.debug_log =
-      declare_parameter<bool>("refine_grasped.pose_fusion.debug_log", true);
-
-    const auto tcp_to_block_xyz =
-      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
-    const auto tcp_to_block_rpy =
-      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
-    const auto roi_size_m =
-      declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
-
-    // Keep for launch-file compatibility; no longer used in one-shot flow.
-    (void)declare_parameter<std::string>("calib_yaml", "");
+    const StartupParameters startup = loadStartupParameters();
+    const std::string & pipeline_mode_str = startup.pipeline_mode_str;
+    const std::string & perception_mode_str = startup.perception_mode_str;
 
     if (perf_log_every_n_frames_ < 1) {
       perf_log_every_n_frames_ = 1;
@@ -218,12 +145,18 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&WorldModelNode::cameraInfoCallback, this, std::placeholders::_1));
 
-    const double tx = (tcp_to_block_xyz.size() >= 1) ? tcp_to_block_xyz[0] : 0.0;
-    const double ty = (tcp_to_block_xyz.size() >= 2) ? tcp_to_block_xyz[1] : 0.0;
-    const double tz = (tcp_to_block_xyz.size() >= 3) ? tcp_to_block_xyz[2] : 0.0;
-    const double rr = (tcp_to_block_rpy.size() >= 1) ? tcp_to_block_rpy[0] : 0.0;
-    const double rp = (tcp_to_block_rpy.size() >= 2) ? tcp_to_block_rpy[1] : 0.0;
-    const double ry = (tcp_to_block_rpy.size() >= 3) ? tcp_to_block_rpy[2] : 0.0;
+    const double tx = getVectorComponent(
+      startup.tcp_to_block_xyz, 0, 0.0, "refine_grasped.tcp_to_block.xyz");
+    const double ty = getVectorComponent(
+      startup.tcp_to_block_xyz, 1, 0.0, "refine_grasped.tcp_to_block.xyz");
+    const double tz = getVectorComponent(
+      startup.tcp_to_block_xyz, 2, 0.0, "refine_grasped.tcp_to_block.xyz");
+    const double rr = getVectorComponent(
+      startup.tcp_to_block_rpy, 0, 0.0, "refine_grasped.tcp_to_block.rpy");
+    const double rp = getVectorComponent(
+      startup.tcp_to_block_rpy, 1, 0.0, "refine_grasped.tcp_to_block.rpy");
+    const double ry = getVectorComponent(
+      startup.tcp_to_block_rpy, 2, 0.0, "refine_grasped.tcp_to_block.rpy");
     const Eigen::Matrix3d rot_tcp_block =
       (Eigen::AngleAxisd(ry, Eigen::Vector3d::UnitZ()) *
       Eigen::AngleAxisd(rp, Eigen::Vector3d::UnitY()) *
@@ -232,12 +165,15 @@ public:
     T_tcp_block_.block<3, 3>(0, 0) = rot_tcp_block;
     T_tcp_block_.block<3, 1>(0, 3) = Eigen::Vector3d(tx, ty, tz);
 
-    roi_size_x_m_ = (roi_size_m.size() >= 1) ? roi_size_m[0] : 0.60;
-    roi_size_y_m_ = (roi_size_m.size() >= 2) ? roi_size_m[1] : 0.40;
+    roi_size_x_m_ = getVectorComponent(
+      startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
+    roi_size_y_m_ = getVectorComponent(
+      startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
     refine_block_roi_size_x_m_ =
-      (refine_block_roi_size_m.size() >= 1) ? refine_block_roi_size_m[0] : 1.20;
+      getVectorComponent(startup.refine_block_roi_size_m, 0, 1.20, "refine_block.roi_size_m");
     refine_block_roi_size_y_m_ =
-      (refine_block_roi_size_m.size() >= 2) ? refine_block_roi_size_m[1] : 1.00;
+      getVectorComponent(startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
+    normalizeConfiguration();
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -322,7 +258,7 @@ public:
         std::placeholders::_2));
 
     marker_refresh_timer_ = create_wall_timer(
-      std::chrono::duration<double>(marker_refresh_period_s),
+      std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {
         const BlockArray snapshot = latestWorldSnapshot();
         if (!snapshot.blocks.empty()) {
@@ -432,6 +368,43 @@ private:
     return "wm_block_" + std::to_string(world_block_counter_);
   }
 
+  std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> buildRegistrationCandidates(
+    const SegmentSrv::Response & seg_res,
+    const OneShotRequest & run_request) const
+  {
+    std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> candidates;
+    candidates.reserve(seg_res.detections.detections.size());
+
+    cv::Mat full_mask = toCvMono(seg_res.mask);
+    const auto & detections = seg_res.detections.detections;
+    for (size_t i = 0; i < detections.size(); ++i) {
+      const auto & det = detections[i];
+      const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
+      const std::string det_id = "block_" + std::to_string(detection_id);
+
+      if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
+        run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
+        !run_request.target_block_id.empty() &&
+        run_request.target_block_id.rfind("block_", 0) == 0 &&
+        det_id != run_request.target_block_id)
+      {
+        continue;
+      }
+
+      cv::Mat det_mask = extract_mask_roi(full_mask, det);
+      if (det_mask.empty() || cv::countNonZero(det_mask) == 0) {
+        continue;
+      }
+
+      auto mask_msg = cv_bridge::CvImage(
+        seg_res.mask.header,
+        "mono8",
+        det_mask).toImageMsg();
+      candidates.emplace_back(detection_id, *mask_msg);
+    }
+    return candidates;
+  }
+
   static double blockDistance(const Block & a, const Block & b)
   {
     const double dx = a.pose.position.x - b.pose.position.x;
@@ -526,6 +499,175 @@ private:
     return true;
   }
 
+  StartupParameters loadStartupParameters()
+  {
+    StartupParameters params;
+
+    params.pipeline_mode_str = declare_parameter<std::string>("pipeline_mode", "full");
+    pipeline_mode_ = cbpwm::parsePipelineMode(params.pipeline_mode_str);
+    params.perception_mode_str = declare_parameter<std::string>("perception_mode", "FULL");
+
+    min_fitness_ = declare_parameter<double>("min_fitness", 0.3);
+    max_rmse_ = declare_parameter<double>("max_rmse", 0.05);
+    object_class_ = declare_parameter<std::string>("object_class", "concrete_block");
+    world_frame_ = declare_parameter<std::string>("world_frame", "world");
+    max_sync_delta_s_ = declare_parameter<double>("sync.max_delta_s", 0.06);
+    object_timeout_s_ = declare_parameter<double>("world_model.object_timeout_s", 10.0);
+    association_max_distance_m_ =
+      declare_parameter<double>("world_model.association_max_distance_m", 0.45);
+    association_max_age_s_ =
+      declare_parameter<double>("world_model.association_max_age_s", 20.0);
+    min_update_confidence_ =
+      declare_parameter<double>("world_model.min_update_confidence", 0.25);
+    refine_target_max_distance_m_ =
+      declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
+    scene_discovery_coarse_fallback_enabled_ =
+      declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
+    scene_discovery_coarse_fallback_min_points_ =
+      declare_parameter<int>("world_model.scene_discovery_coarse_fallback.min_points", 120);
+    coarse_surface_square_ratio_thresh_ = declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh", 1.35);
+    coarse_front_center_offset_square_m_ = declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
+    coarse_front_center_offset_rect_m_ = declare_parameter<double>(
+      "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
+
+    debug_detection_overlay_enabled_ =
+      declare_parameter<bool>("debug.publish_detection_overlay", true);
+    debug_refine_grasped_roi_input_enabled_ =
+      declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
+    perf_log_timing_enabled_ = declare_parameter<bool>("perf.log_timing", true);
+    perf_log_every_n_frames_ = declare_parameter<int>("perf.log_every_n_frames", 20);
+    params.marker_refresh_period_s =
+      declare_parameter<double>("world_model.marker_refresh_period_s", 0.5);
+
+    refine_grasped_use_fk_roi_ = declare_parameter<bool>("refine_grasped.use_fk_roi", true);
+    refine_grasped_tcp_frame_ =
+      declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
+    refine_grasped_camera_frame_ =
+      declare_parameter<std::string>("refine_grasped.camera_frame", "");
+    refine_grasped_camera_info_topic_ = declare_parameter<std::string>(
+      "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
+    refine_grasped_min_depth_m_ = declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
+    refine_grasped_max_depth_m_ = declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
+    refine_grasped_segmentation_timeout_s_ =
+      declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
+    refine_grasped_use_black_bg_ = declare_parameter<bool>(
+      "refine_grasped.segmentation_input.use_black_background", false);
+    refine_grasped_blur_kernel_size_ =
+      declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
+
+    refine_block_use_pose_roi_ = declare_parameter<bool>("refine_block.use_pose_roi", false);
+    params.refine_block_roi_size_m =
+      declare_parameter<std::vector<double>>("refine_block.roi_size_m", {1.20, 1.00});
+    refine_block_min_depth_m_ = declare_parameter<double>("refine_block.min_depth_m", 0.5);
+    refine_block_max_depth_m_ = declare_parameter<double>("refine_block.max_depth_m", 30.0);
+    refine_block_segmentation_timeout_s_ =
+      declare_parameter<double>("refine_block.segmentation_timeout_s", 3.0);
+    refine_block_use_black_bg_ = declare_parameter<bool>(
+      "refine_block.segmentation_input.use_black_background", false);
+    refine_block_blur_kernel_size_ =
+      declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
+
+    refine_grasped_pose_fusion_.enabled =
+      declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
+    refine_grasped_pose_fusion_.mode = declare_parameter<std::string>(
+      "refine_grasped.pose_fusion.mode",
+      "position_from_registration_orientation_from_fk");
+    refine_grasped_pose_fusion_.max_translation_jump_m = declare_parameter<double>(
+      "refine_grasped.pose_fusion.max_translation_jump_m", 0.35);
+    refine_grasped_pose_fusion_.max_z_delta_m = declare_parameter<double>(
+      "refine_grasped.pose_fusion.max_z_delta_m", 0.25);
+    refine_grasped_pose_fusion_.debug_log =
+      declare_parameter<bool>("refine_grasped.pose_fusion.debug_log", true);
+
+    params.tcp_to_block_xyz =
+      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
+    params.tcp_to_block_rpy =
+      declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
+    params.refine_grasped_roi_size_m =
+      declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
+
+    // Keep for launch-file compatibility; no longer used in one-shot flow.
+    (void)declare_parameter<std::string>("calib_yaml", "");
+    return params;
+  }
+
+  double getVectorComponent(
+    const std::vector<double> & values,
+    size_t index,
+    double fallback,
+    const char * param_name)
+  {
+    if (index < values.size()) {
+      return values[index];
+    }
+    RCLCPP_WARN(
+      get_logger(),
+      "Parameter '%s' expected at least %zu entries, got %zu. Using fallback %.3f for index %zu.",
+      param_name,
+      index + 1,
+      values.size(),
+      fallback,
+      index);
+    return fallback;
+  }
+
+  void normalizeConfiguration()
+  {
+    auto clamp_min = [this](double & value, double min_value, const char * name) {
+        if (value < min_value) {
+          RCLCPP_WARN(get_logger(), "Invalid %s=%.3f, clamping to %.3f", name, value, min_value);
+          value = min_value;
+        }
+      };
+    auto normalize_blur = [this](int & kernel, const char * name) {
+        if (kernel < 1) {
+          RCLCPP_WARN(get_logger(), "Invalid %s=%d, clamping to 1", name, kernel);
+          kernel = 1;
+        }
+        if ((kernel % 2) == 0) {
+          RCLCPP_WARN(get_logger(), "Invalid %s=%d (must be odd), incrementing to %d", name, kernel, kernel + 1);
+          kernel += 1;
+        }
+      };
+    auto clamp_min_i = [this](int & value, int min_value, const char * name) {
+        if (value < min_value) {
+          RCLCPP_WARN(get_logger(), "Invalid %s=%d, clamping to %d", name, value, min_value);
+          value = min_value;
+        }
+      };
+
+    clamp_min(min_fitness_, 0.0, "min_fitness");
+    clamp_min(max_rmse_, 0.0, "max_rmse");
+    clamp_min_i(scene_discovery_coarse_fallback_min_points_, 1, "scene_discovery_coarse_fallback.min_points");
+    clamp_min(coarse_surface_square_ratio_thresh_, 1.0, "scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh");
+    clamp_min(coarse_front_center_offset_square_m_, 0.0, "scene_discovery_coarse_fallback.center_offset.square_m");
+    clamp_min(coarse_front_center_offset_rect_m_, 0.0, "scene_discovery_coarse_fallback.center_offset.rect_m");
+
+    clamp_min(roi_size_x_m_, 0.01, "refine_grasped.roi_size_m[0]");
+    clamp_min(roi_size_y_m_, 0.01, "refine_grasped.roi_size_m[1]");
+    clamp_min(refine_block_roi_size_x_m_, 0.01, "refine_block.roi_size_m[0]");
+    clamp_min(refine_block_roi_size_y_m_, 0.01, "refine_block.roi_size_m[1]");
+    if (refine_grasped_min_depth_m_ > refine_grasped_max_depth_m_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid refine_grasped depth range [%.3f, %.3f], swapping bounds",
+        refine_grasped_min_depth_m_, refine_grasped_max_depth_m_);
+      std::swap(refine_grasped_min_depth_m_, refine_grasped_max_depth_m_);
+    }
+    if (refine_block_min_depth_m_ > refine_block_max_depth_m_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid refine_block depth range [%.3f, %.3f], swapping bounds",
+        refine_block_min_depth_m_, refine_block_max_depth_m_);
+      std::swap(refine_block_min_depth_m_, refine_block_max_depth_m_);
+    }
+    normalize_blur(
+      refine_grasped_blur_kernel_size_, "refine_grasped.segmentation_input.blur_kernel_size");
+    normalize_blur(refine_block_blur_kernel_size_, "refine_block.segmentation_input.blur_kernel_size");
+  }
+
   bool buildCoarseBlockFromMaskAndCloud(
     uint32_t detection_id,
     const sensor_msgs::msg::Image & mask_msg,
@@ -535,116 +677,20 @@ private:
     Block & out_block,
     std::string & reason) const
   {
-    if (cloud_msg.width == 0 || cloud_msg.height == 0) {
-      reason = "cloud has zero size";
-      return false;
-    }
-    if (mask_msg.width != cloud_msg.width || mask_msg.height != cloud_msg.height) {
-      reason =
-        "mask/cloud size mismatch (mask=" + std::to_string(mask_msg.width) + "x" +
-        std::to_string(mask_msg.height) + ", cloud=" + std::to_string(cloud_msg.width) + "x" +
-        std::to_string(cloud_msg.height) + ")";
-      return false;
-    }
+    cbpwm::CoarsePoseInput in;
+    in.detection_id = detection_id;
+    in.header = header;
+    in.mask = toCvMono(mask_msg);
+    in.camera_origin_world = camera_origin_world;
 
-    const cv::Mat mask = toCvMono(mask_msg);
-    if (mask.empty()) {
-      reason = "empty mask";
-      return false;
-    }
+    cbpwm::CoarsePoseConfig cfg;
+    cfg.min_points = scene_discovery_coarse_fallback_min_points_;
+    cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
+    cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
+    cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;
+    cfg.min_confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
 
-    int x_offset = -1;
-    int y_offset = -1;
-    int z_offset = -1;
-    for (const auto & field : cloud_msg.fields) {
-      if (field.name == "x") {
-        x_offset = static_cast<int>(field.offset);
-      } else if (field.name == "y") {
-        y_offset = static_cast<int>(field.offset);
-      } else if (field.name == "z") {
-        z_offset = static_cast<int>(field.offset);
-      }
-    }
-    if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
-      reason = "cloud missing x/y/z fields";
-      return false;
-    }
-
-    double sum_x = 0.0;
-    double sum_y = 0.0;
-    double sum_z = 0.0;
-    int valid_points = 0;
-    std::vector<Eigen::Vector3d> selected_points;
-    selected_points.reserve(
-      static_cast<size_t>(mask_msg.width) * static_cast<size_t>(mask_msg.height) / 16U);
-
-    for (uint32_t v = 0; v < cloud_msg.height; ++v) {
-      const auto * row_ptr = cloud_msg.data.data() + static_cast<size_t>(v) * cloud_msg.row_step;
-      for (uint32_t u = 0; u < cloud_msg.width; ++u) {
-        if (mask.at<uint8_t>(static_cast<int>(v), static_cast<int>(u)) == 0U) {
-          continue;
-        }
-        const auto * point_ptr = row_ptr + static_cast<size_t>(u) * cloud_msg.point_step;
-        float x = 0.0F;
-        float y = 0.0F;
-        float z = 0.0F;
-        std::memcpy(&x, point_ptr + x_offset, sizeof(float));
-        std::memcpy(&y, point_ptr + y_offset, sizeof(float));
-        std::memcpy(&z, point_ptr + z_offset, sizeof(float));
-        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
-          continue;
-        }
-        sum_x += static_cast<double>(x);
-        sum_y += static_cast<double>(y);
-        sum_z += static_cast<double>(z);
-        selected_points.emplace_back(x, y, z);
-        ++valid_points;
-      }
-    }
-
-    if (valid_points < scene_discovery_coarse_fallback_min_points_) {
-      reason = "too few valid masked points for coarse pose: " + std::to_string(valid_points);
-      return false;
-    }
-
-    const double inv_n = 1.0 / static_cast<double>(valid_points);
-    Eigen::Vector3d center(sum_x * inv_n, sum_y * inv_n, sum_z * inv_n);
-    cv::Rect bbox = cv::boundingRect(mask);
-    if (bbox.width > 0 && bbox.height > 0 && camera_origin_world != nullptr) {
-      const double ratio = static_cast<double>(std::max(bbox.width, bbox.height)) /
-        static_cast<double>(std::max(1, std::min(bbox.width, bbox.height)));
-      const bool is_square = ratio <= coarse_surface_square_ratio_thresh_;
-      const double depth_offset_m = is_square ? coarse_front_center_offset_square_m_ :
-        coarse_front_center_offset_rect_m_;
-      Eigen::Vector3d n_surface = Eigen::Vector3d::Zero();
-      std::string normal_reason;
-      if (estimateSurfaceNormalFromPoints(
-          selected_points, center, *camera_origin_world, n_surface, normal_reason))
-      {
-        center += n_surface * depth_offset_m;
-      } else {
-        const Eigen::Vector3d ray = center - *camera_origin_world;
-        const double ray_norm = ray.norm();
-        if (ray_norm > 1e-6) {
-          center += (ray / ray_norm) * depth_offset_m;
-        }
-      }
-    }
-
-    out_block.id = "block_" + std::to_string(detection_id);
-    out_block.pose.position.x = center.x();
-    out_block.pose.position.y = center.y();
-    out_block.pose.position.z = center.z();
-    out_block.pose.orientation.x = 0.0;
-    out_block.pose.orientation.y = 0.0;
-    out_block.pose.orientation.z = 0.0;
-    out_block.pose.orientation.w = 1.0;
-    out_block.confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
-    out_block.last_seen = header.stamp;
-    out_block.pose_status = Block::POSE_COARSE;
-    out_block.task_status = Block::TASK_FREE;
-    reason = "coarse centroid from masked cloud points=" + std::to_string(valid_points);
-    return true;
+    return cbpwm::buildCoarseBlockFromOrganizedCloud(in, cloud_msg, cfg, out_block, reason);
   }
 
   bool buildCoarseBlockFromCloudCentroid(
@@ -656,105 +702,20 @@ private:
     Block & out_block,
     std::string & reason) const
   {
-    if (cutout_cloud_msg.data.empty()) {
-      reason = "empty cutout cloud";
-      return false;
-    }
+    cbpwm::CoarsePoseInput in;
+    in.detection_id = detection_id;
+    in.header = header;
+    in.mask = toCvMono(mask_msg);
+    in.camera_origin_world = camera_origin_world;
 
-    int x_offset = -1;
-    int y_offset = -1;
-    int z_offset = -1;
-    for (const auto & field : cutout_cloud_msg.fields) {
-      if (field.name == "x") {
-        x_offset = static_cast<int>(field.offset);
-      } else if (field.name == "y") {
-        y_offset = static_cast<int>(field.offset);
-      } else if (field.name == "z") {
-        z_offset = static_cast<int>(field.offset);
-      }
-    }
-    if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
-      reason = "cutout cloud missing x/y/z fields";
-      return false;
-    }
+    cbpwm::CoarsePoseConfig cfg;
+    cfg.min_points = scene_discovery_coarse_fallback_min_points_;
+    cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
+    cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
+    cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;
+    cfg.min_confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
 
-    const size_t points_n = static_cast<size_t>(cutout_cloud_msg.width) *
-      static_cast<size_t>(cutout_cloud_msg.height);
-    if (points_n == 0) {
-      reason = "cutout cloud has zero points";
-      return false;
-    }
-
-    double sum_x = 0.0;
-    double sum_y = 0.0;
-    double sum_z = 0.0;
-    int valid_points = 0;
-    std::vector<Eigen::Vector3d> selected_points;
-    selected_points.reserve(points_n);
-    for (size_t i = 0; i < points_n; ++i) {
-      const auto * point_ptr = cutout_cloud_msg.data.data() + i * cutout_cloud_msg.point_step;
-      float x = 0.0F;
-      float y = 0.0F;
-      float z = 0.0F;
-      std::memcpy(&x, point_ptr + x_offset, sizeof(float));
-      std::memcpy(&y, point_ptr + y_offset, sizeof(float));
-      std::memcpy(&z, point_ptr + z_offset, sizeof(float));
-      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
-        continue;
-      }
-      sum_x += static_cast<double>(x);
-      sum_y += static_cast<double>(y);
-      sum_z += static_cast<double>(z);
-      selected_points.emplace_back(x, y, z);
-      ++valid_points;
-    }
-
-    if (valid_points < scene_discovery_coarse_fallback_min_points_) {
-      reason = "too few valid cutout points for coarse pose: " + std::to_string(valid_points);
-      return false;
-    }
-
-    const double inv_n = 1.0 / static_cast<double>(valid_points);
-    Eigen::Vector3d center(sum_x * inv_n, sum_y * inv_n, sum_z * inv_n);
-    cv::Mat mask = toCvMono(mask_msg);
-    if (!mask.empty() && camera_origin_world != nullptr) {
-      cv::Rect bbox = cv::boundingRect(mask);
-      if (bbox.width > 0 && bbox.height > 0) {
-        const double ratio = static_cast<double>(std::max(bbox.width, bbox.height)) /
-          static_cast<double>(std::max(1, std::min(bbox.width, bbox.height)));
-        const bool is_square = ratio <= coarse_surface_square_ratio_thresh_;
-        const double depth_offset_m = is_square ? coarse_front_center_offset_square_m_ :
-          coarse_front_center_offset_rect_m_;
-        Eigen::Vector3d n_surface = Eigen::Vector3d::Zero();
-        std::string normal_reason;
-        if (estimateSurfaceNormalFromPoints(
-            selected_points, center, *camera_origin_world, n_surface, normal_reason))
-        {
-          center += n_surface * depth_offset_m;
-        } else {
-          const Eigen::Vector3d ray = center - *camera_origin_world;
-          const double ray_norm = ray.norm();
-          if (ray_norm > 1e-6) {
-            center += (ray / ray_norm) * depth_offset_m;
-          }
-        }
-      }
-    }
-
-    out_block.id = "block_" + std::to_string(detection_id);
-    out_block.pose.position.x = center.x();
-    out_block.pose.position.y = center.y();
-    out_block.pose.position.z = center.z();
-    out_block.pose.orientation.x = 0.0;
-    out_block.pose.orientation.y = 0.0;
-    out_block.pose.orientation.z = 0.0;
-    out_block.pose.orientation.w = 1.0;
-    out_block.confidence = std::max(0.3F, static_cast<float>(min_update_confidence_));
-    out_block.last_seen = header.stamp;
-    out_block.pose_status = Block::POSE_COARSE;
-    out_block.task_status = Block::TASK_FREE;
-    reason = "coarse centroid from cutout cloud points=" + std::to_string(valid_points);
-    return true;
+    return cbpwm::buildCoarseBlockFromCutoutCloud(in, cutout_cloud_msg, cfg, out_block, reason);
   }
 
   bool runRegistrationServiceCutoutSync(
@@ -794,48 +755,6 @@ private:
     return true;
   }
 
-  bool estimateSurfaceNormalFromPoints(
-    const std::vector<Eigen::Vector3d> & points_world,
-    const Eigen::Vector3d & center_world,
-    const Eigen::Vector3d & camera_origin_world,
-    Eigen::Vector3d & out_normal_world,
-    std::string & reason) const
-  {
-    if (points_world.size() < 20U) {
-      reason = "not enough points for surface-normal PCA";
-      return false;
-    }
-
-    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
-    for (const auto & p : points_world) {
-      const Eigen::Vector3d d = p - center_world;
-      cov.noalias() += d * d.transpose();
-    }
-    cov /= static_cast<double>(points_world.size());
-
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
-    if (solver.info() != Eigen::Success) {
-      reason = "eigendecomposition failed";
-      return false;
-    }
-
-    Eigen::Vector3d n = solver.eigenvectors().col(0);
-    const double n_norm = n.norm();
-    if (n_norm < 1e-6) {
-      reason = "degenerate normal";
-      return false;
-    }
-    n /= n_norm;
-
-    // Orient normal from visible/front surface into block interior (away from camera).
-    const Eigen::Vector3d cam_to_center = center_world - camera_origin_world;
-    if (n.dot(cam_to_center) < 0.0) {
-      n = -n;
-    }
-
-    out_normal_world = n;
-    return true;
-  }
 
   bool lookupFrameOriginInWorld(
     const std_msgs::msg::Header & stamped_header,
@@ -1007,6 +926,256 @@ private:
     }
 
     return true;
+  }
+
+  bool tryLoadExpectedTarget(
+    const OneShotRequest & run_request,
+    Block & expected_target)
+  {
+    const bool targeted_refine =
+      (run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
+      run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
+      !run_request.target_block_id.empty() &&
+      run_request.target_block_id.rfind("block_", 0) != 0;
+    if (!targeted_refine) {
+      return false;
+    }
+
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    const auto it = persistent_world_.find(run_request.target_block_id);
+    if (it == persistent_world_.end()) {
+      return false;
+    }
+    expected_target = it->second;
+    return true;
+  }
+
+  bool trySceneDiscoveryCoarseFallback(
+    uint32_t detection_id,
+    const std::string & registration_reason,
+    const sensor_msgs::msg::Image & mask,
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const OneShotRequest & run_request,
+    const Eigen::Vector3d * camera_origin_world,
+    RegistrationCounters & counters)
+  {
+    if (run_request.mode != cbpwm::OneShotMode::kSceneDiscovery ||
+      !scene_discovery_coarse_fallback_enabled_)
+    {
+      return false;
+    }
+
+    Block coarse_block;
+    std::string coarse_reason;
+    const bool coarse_ok = buildCoarseBlockFromMaskAndCloud(
+      detection_id,
+      mask,
+      cloud,
+      cloud.header,
+      camera_origin_world,
+      coarse_block,
+      coarse_reason);
+    if (!coarse_ok) {
+      sensor_msgs::msg::PointCloud2 cutout_cloud;
+      std::string cutout_reason;
+      const bool got_cutout = runRegistrationServiceCutoutSync(
+        mask, cloud, run_request.registration_timeout_s, cutout_cloud, cutout_reason);
+      if (!got_cutout) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
+          detection_id,
+          registration_reason.c_str(),
+          cutout_reason.c_str());
+        return false;
+      }
+
+      const bool coarse_from_cutout_ok = buildCoarseBlockFromCloudCentroid(
+        detection_id,
+        mask,
+        cutout_cloud,
+        cutout_cloud.header,
+        camera_origin_world,
+        coarse_block,
+        coarse_reason);
+      if (!coarse_from_cutout_ok) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
+          detection_id,
+          registration_reason.c_str(),
+          coarse_reason.c_str());
+        return false;
+      }
+    }
+
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    std::string assigned_id;
+    std::string upsert_reason;
+    const bool upsert_ok = upsertRegisteredBlock(
+      coarse_block,
+      run_request,
+      cloud.header,
+      assigned_id,
+      upsert_reason);
+    if (!upsert_ok) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Registration rejected for block_%u (%s). Coarse fallback rejected: %s",
+        detection_id,
+        registration_reason.c_str(),
+        upsert_reason.c_str());
+      return false;
+    }
+
+    ++counters.coarse_upserts_ok;
+    RCLCPP_WARN(
+      get_logger(),
+      "Registration rejected for block_%u (%s). Coarse fallback accepted: incoming=%s assigned=%s",
+      detection_id,
+      registration_reason.c_str(),
+      coarse_block.id.c_str(),
+      assigned_id.c_str());
+    return true;
+  }
+
+  void processTargetedRegistrationCandidates(
+    const std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> & candidates,
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const OneShotRequest & run_request,
+    const Block & expected_target,
+    RegistrationCounters & counters)
+  {
+    Block best_block;
+    bool best_valid = false;
+    double best_dist = std::numeric_limits<double>::infinity();
+
+    for (const auto & candidate : candidates) {
+      Block block;
+      std::string reason;
+      const bool ok = runRegistrationSync(
+        candidate.first,
+        candidate.second,
+        cloud,
+        cloud.header,
+        run_request.registration_timeout_s,
+        block,
+        reason);
+
+      if (!ok) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Registration rejected for block_%u: %s",
+          candidate.first,
+          reason.c_str());
+        continue;
+      }
+
+      const double dist = blockDistance(block, expected_target);
+      if (dist < best_dist) {
+        best_dist = dist;
+        best_block = block;
+        best_valid = true;
+      }
+    }
+
+    if (!best_valid || best_dist > refine_target_max_distance_m_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Targeted refine failed for '%s': no candidate within %.3f m of expected pose.",
+        run_request.target_block_id.c_str(),
+        refine_target_max_distance_m_);
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    std::string assigned_id;
+    std::string upsert_reason;
+    const bool upsert_ok = upsertRegisteredBlock(
+      best_block,
+      run_request,
+      cloud.header,
+      assigned_id,
+      upsert_reason);
+    if (!upsert_ok) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Targeted refine rejected after association checks: %s",
+        upsert_reason.c_str());
+      return;
+    }
+
+    ++counters.registrations_ok;
+    RCLCPP_INFO(
+      get_logger(),
+      "Targeted refine accepted: target=%s assigned=%s dist=%.3f m",
+      run_request.target_block_id.c_str(),
+      assigned_id.c_str(),
+      best_dist);
+  }
+
+  void processGeneralRegistrationCandidates(
+    const std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> & candidates,
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const OneShotRequest & run_request,
+    const Eigen::Vector3d * camera_origin_world,
+    RegistrationCounters & counters)
+  {
+    for (const auto & candidate : candidates) {
+      Block block;
+      std::string reason;
+      const bool ok = runRegistrationSync(
+        candidate.first,
+        candidate.second,
+        cloud,
+        cloud.header,
+        run_request.registration_timeout_s,
+        block,
+        reason);
+
+      if (ok) {
+        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+        std::string assigned_id;
+        std::string upsert_reason;
+        const bool upsert_ok = upsertRegisteredBlock(
+          block,
+          run_request,
+          cloud.header,
+          assigned_id,
+          upsert_reason);
+        if (upsert_ok) {
+          ++counters.registrations_ok;
+          RCLCPP_INFO(
+            get_logger(),
+            "Registration accepted and associated: incoming=%s assigned=%s",
+            block.id.c_str(),
+            assigned_id.c_str());
+        } else {
+          RCLCPP_WARN(
+            get_logger(),
+            "Registration rejected after association checks for %s: %s",
+            block.id.c_str(),
+            upsert_reason.c_str());
+        }
+        continue;
+      }
+
+      const bool fallback_ok = trySceneDiscoveryCoarseFallback(
+        candidate.first,
+        reason,
+        candidate.second,
+        cloud,
+        run_request,
+        camera_origin_world,
+        counters);
+      if (!fallback_ok) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Registration rejected for block_%u: %s",
+          candidate.first,
+          reason.c_str());
+      }
+    }
   }
 
   static Eigen::Matrix4d transformToEigen(const geometry_msgs::msg::TransformStamped & tf)
@@ -2032,6 +2201,163 @@ private:
     processFrame(image, cloud);
   }
 
+  void handleOneShotSegmentationResponse(
+    rclcpp::Client<SegmentSrv>::SharedFuture seg_future,
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    std::chrono::steady_clock::time_point t_start,
+    const OneShotRequest & run_request)
+  {
+    try {
+      auto seg_res = seg_future.get();
+      const auto t_after_seg = std::chrono::steady_clock::now();
+      const size_t seg_detection_count =
+        seg_res ? seg_res->detections.detections.size() : 0U;
+
+      if (!seg_res || !seg_res->success) {
+        publishPersistentWorld(cloud->header);
+        completeOneShotRequest(run_request.sequence, false, "Segmentation failed.");
+        resetBusy();
+        return;
+      }
+
+      RCLCPP_INFO(
+        get_logger(),
+        "One-shot %s: segmentation detections=%zu",
+        cbpwm::oneShotModeToString(run_request.mode),
+        seg_detection_count);
+
+      if (debug_detection_overlay_enabled_ && det_debug_pub_) {
+        publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
+      }
+
+      const auto t_after_track = t_after_seg;
+      const size_t tracked_count = seg_detection_count;
+      RCLCPP_INFO(
+        get_logger(),
+        "One-shot %s: detections=%zu tracked=%zu (tracker bypassed)",
+        cbpwm::oneShotModeToString(run_request.mode),
+        seg_detection_count,
+        tracked_count);
+
+      if (seg_res->detections.detections.empty()) {
+        const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          t_after_seg - t_start).count();
+        recordTiming(total_ms, 0, 0, total_ms);
+        publishPersistentWorld(cloud->header);
+
+        if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery) {
+          completeOneShotRequest(
+            run_request.sequence,
+            true,
+            "Scene discovery finished (detections=0, tracked=0, registrations=0).");
+        } else {
+          completeOneShotRequest(
+            run_request.sequence,
+            false,
+            "Requested block was not detected.");
+        }
+        resetBusy();
+        return;
+      }
+
+      auto candidates = buildRegistrationCandidates(*seg_res, run_request);
+
+      const size_t registration_candidates = candidates.size();
+      RCLCPP_INFO(
+        get_logger(),
+        "One-shot %s: detections=%zu tracked=%zu registration_candidates=%zu",
+        cbpwm::oneShotModeToString(run_request.mode),
+        seg_detection_count,
+        tracked_count,
+        registration_candidates);
+
+      if (registration_candidates == 0) {
+        const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          t_after_track - t_start).count();
+        recordTiming(total_ms, 0, 0, total_ms);
+        publishPersistentWorld(cloud->header);
+
+        if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery) {
+          completeOneShotRequest(
+            run_request.sequence,
+            true,
+            "Scene discovery finished (detections=" + std::to_string(seg_detection_count) +
+            ", tracked=" + std::to_string(tracked_count) +
+            ", registration_candidates=0, registrations=0).");
+        } else {
+          completeOneShotRequest(
+            run_request.sequence,
+            false,
+            "Requested block was not available for registration "
+            "(detections=" + std::to_string(seg_detection_count) +
+            ", tracked=" + std::to_string(tracked_count) + ").");
+        }
+
+        resetBusy();
+        return;
+      }
+
+      if (!action_client_->action_server_is_ready()) {
+        RCLCPP_WARN(get_logger(), "Registration action unavailable.");
+        completeOneShotRequest(run_request.sequence, false, "Registration action unavailable.");
+        resetBusy();
+        return;
+      }
+
+      const auto t_reg_start = std::chrono::steady_clock::now();
+      RegistrationCounters counters;
+      Eigen::Vector3d camera_origin_world = Eigen::Vector3d::Zero();
+      std::string camera_origin_reason;
+      const bool have_camera_origin = lookupFrameOriginInWorld(
+        cloud->header, camera_origin_world, camera_origin_reason);
+      if (!have_camera_origin) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Scene-discovery coarse center offset disabled for this frame: %s",
+          camera_origin_reason.c_str());
+      }
+      Block expected_target;
+      if (tryLoadExpectedTarget(run_request, expected_target)) {
+        processTargetedRegistrationCandidates(candidates, *cloud, run_request, expected_target, counters);
+      } else {
+        processGeneralRegistrationCandidates(
+          candidates,
+          *cloud,
+          run_request,
+          have_camera_origin ? &camera_origin_world : nullptr,
+          counters);
+      }
+
+      const auto t_reg_end = std::chrono::steady_clock::now();
+      const auto seg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        t_after_seg - t_start).count();
+      const auto track_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        t_after_track - t_after_seg).count();
+      const auto reg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        t_reg_end - t_reg_start).count();
+      const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        t_reg_end - t_start).count();
+      recordTiming(seg_ms, track_ms, reg_ms, total_ms);
+
+      publishPersistentWorld(cloud->header);
+      completeOneShotRequest(
+        run_request.sequence,
+        counters.registrations_ok > 0 || run_request.mode == cbpwm::OneShotMode::kSceneDiscovery,
+        "Pose estimation finished (detections=" + std::to_string(seg_detection_count) +
+        ", tracked=" + std::to_string(tracked_count) +
+        ", registration_candidates=" + std::to_string(registration_candidates) +
+        ", registrations=" + std::to_string(counters.registrations_ok) +
+        ", coarse_registrations=" + std::to_string(counters.coarse_upserts_ok) + ").");
+
+      resetBusy();
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "Segmentation stage failed: %s", e.what());
+      completeOneShotRequest(run_request.sequence, false, "Segmentation stage exception.");
+      resetBusy();
+    }
+  }
+
   void processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
@@ -2074,400 +2400,7 @@ private:
     segment_client_->async_send_request(
       seg_req,
       [this, image, cloud, t_start, run_request](rclcpp::Client<SegmentSrv>::SharedFuture seg_future) {
-        try {
-          auto seg_res = seg_future.get();
-          const auto t_after_seg = std::chrono::steady_clock::now();
-          const size_t seg_detection_count =
-            seg_res ? seg_res->detections.detections.size() : 0U;
-
-          if (!seg_res || !seg_res->success) {
-            publishPersistentWorld(cloud->header);
-            completeOneShotRequest(run_request.sequence, false, "Segmentation failed.");
-            resetBusy();
-            return;
-          }
-
-          RCLCPP_INFO(
-            get_logger(),
-            "One-shot %s: segmentation detections=%zu",
-            cbpwm::oneShotModeToString(run_request.mode),
-            seg_detection_count);
-
-          if (debug_detection_overlay_enabled_ && det_debug_pub_) {
-            publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
-          }
-
-          const auto t_after_track = t_after_seg;
-          const size_t tracked_count = seg_detection_count;
-          RCLCPP_INFO(
-            get_logger(),
-            "One-shot %s: detections=%zu tracked=%zu (tracker bypassed)",
-            cbpwm::oneShotModeToString(run_request.mode),
-            seg_detection_count,
-            tracked_count);
-
-          if (seg_res->detections.detections.empty()) {
-            const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-              t_after_seg - t_start).count();
-            recordTiming(total_ms, 0, 0, total_ms);
-            publishPersistentWorld(cloud->header);
-
-            if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery) {
-              completeOneShotRequest(
-                run_request.sequence,
-                true,
-                "Scene discovery finished (detections=0, tracked=0, registrations=0).");
-            } else {
-              completeOneShotRequest(
-                run_request.sequence,
-                false,
-                "Requested block was not detected.");
-            }
-            resetBusy();
-            return;
-          }
-
-          std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> candidates;
-          candidates.reserve(seg_res->detections.detections.size());
-
-          cv::Mat full_mask = toCvMono(seg_res->mask);
-          const auto & detections = seg_res->detections.detections;
-          for (size_t i = 0; i < detections.size(); ++i) {
-            const auto & det = detections[i];
-            const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
-            const std::string det_id = "block_" + std::to_string(detection_id);
-
-            if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
-              run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
-              !run_request.target_block_id.empty() &&
-              run_request.target_block_id.rfind("block_", 0) == 0 &&
-              det_id != run_request.target_block_id)
-            {
-              continue;
-            }
-
-            cv::Mat det_mask = extract_mask_roi(full_mask, det);
-            if (det_mask.empty() || cv::countNonZero(det_mask) == 0) {
-              continue;
-            }
-
-            auto mask_msg = cv_bridge::CvImage(
-              seg_res->mask.header,
-              "mono8",
-              det_mask).toImageMsg();
-            candidates.emplace_back(detection_id, *mask_msg);
-          }
-
-          const size_t registration_candidates = candidates.size();
-          RCLCPP_INFO(
-            get_logger(),
-            "One-shot %s: detections=%zu tracked=%zu registration_candidates=%zu",
-            cbpwm::oneShotModeToString(run_request.mode),
-            seg_detection_count,
-            tracked_count,
-            registration_candidates);
-
-          if (registration_candidates == 0) {
-            const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-              t_after_track - t_start).count();
-            recordTiming(total_ms, 0, 0, total_ms);
-            publishPersistentWorld(cloud->header);
-
-            if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery) {
-              completeOneShotRequest(
-                run_request.sequence,
-                true,
-                "Scene discovery finished (detections=" + std::to_string(seg_detection_count) +
-                ", tracked=" + std::to_string(tracked_count) +
-                ", registration_candidates=0, registrations=0).");
-            } else {
-              completeOneShotRequest(
-                run_request.sequence,
-                false,
-                "Requested block was not available for registration "
-                "(detections=" + std::to_string(seg_detection_count) +
-                ", tracked=" + std::to_string(tracked_count) + ").");
-            }
-
-            resetBusy();
-            return;
-          }
-
-          if (!action_client_->action_server_is_ready()) {
-            RCLCPP_WARN(get_logger(), "Registration action unavailable.");
-            completeOneShotRequest(run_request.sequence, false, "Registration action unavailable.");
-            resetBusy();
-            return;
-          }
-
-          const auto t_reg_start = std::chrono::steady_clock::now();
-          size_t registrations_ok = 0;
-          size_t coarse_upserts_ok = 0;
-          Eigen::Vector3d camera_origin_world = Eigen::Vector3d::Zero();
-          std::string camera_origin_reason;
-          const bool have_camera_origin = lookupFrameOriginInWorld(cloud->header, camera_origin_world,
-              camera_origin_reason);
-          if (!have_camera_origin) {
-            RCLCPP_WARN_THROTTLE(
-              get_logger(), *get_clock(), 3000,
-              "Scene-discovery coarse center offset disabled for this frame: %s",
-              camera_origin_reason.c_str());
-          }
-          const bool targeted_refine =
-            (run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
-            run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
-            !run_request.target_block_id.empty() &&
-            run_request.target_block_id.rfind("block_", 0) != 0;
-
-          bool have_expected_target = false;
-          Block expected_target;
-          if (targeted_refine) {
-            std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-            const auto it = persistent_world_.find(run_request.target_block_id);
-            if (it != persistent_world_.end()) {
-              expected_target = it->second;
-              have_expected_target = true;
-            }
-          }
-
-          if (targeted_refine && have_expected_target) {
-            Block best_block;
-            bool best_valid = false;
-            double best_dist = std::numeric_limits<double>::infinity();
-
-            for (const auto & candidate : candidates) {
-              Block block;
-              std::string reason;
-              const bool ok = runRegistrationSync(
-                candidate.first,
-                candidate.second,
-                *cloud,
-                cloud->header,
-                run_request.registration_timeout_s,
-                block,
-                reason);
-
-              if (!ok) {
-                RCLCPP_WARN(
-                  get_logger(),
-                  "Registration rejected for block_%u: %s",
-                  candidate.first,
-                  reason.c_str());
-                continue;
-              }
-
-              const double dist = blockDistance(block, expected_target);
-              if (dist < best_dist) {
-                best_dist = dist;
-                best_block = block;
-                best_valid = true;
-              }
-            }
-
-            if (best_valid && best_dist <= refine_target_max_distance_m_) {
-              std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-              std::string assigned_id;
-              std::string upsert_reason;
-              const bool upsert_ok = upsertRegisteredBlock(
-                best_block,
-                run_request,
-                cloud->header,
-                assigned_id,
-                upsert_reason);
-              if (upsert_ok) {
-                ++registrations_ok;
-                RCLCPP_INFO(
-                  get_logger(),
-                  "Targeted refine accepted: target=%s assigned=%s dist=%.3f m",
-                  run_request.target_block_id.c_str(),
-                  assigned_id.c_str(),
-                  best_dist);
-              } else {
-                RCLCPP_WARN(
-                  get_logger(),
-                  "Targeted refine rejected after association checks: %s",
-                  upsert_reason.c_str());
-              }
-            } else {
-              RCLCPP_WARN(
-                get_logger(),
-                "Targeted refine failed for '%s': no candidate within %.3f m of expected pose.",
-                run_request.target_block_id.c_str(),
-                refine_target_max_distance_m_);
-            }
-          } else {
-            for (const auto & candidate : candidates) {
-              Block block;
-              std::string reason;
-              const bool ok = runRegistrationSync(
-                candidate.first,
-                candidate.second,
-                *cloud,
-                cloud->header,
-                run_request.registration_timeout_s,
-                block,
-                reason);
-
-              if (ok) {
-                std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-                std::string assigned_id;
-                std::string upsert_reason;
-                const bool upsert_ok = upsertRegisteredBlock(
-                  block,
-                  run_request,
-                  cloud->header,
-                  assigned_id,
-                  upsert_reason);
-                if (upsert_ok) {
-                  ++registrations_ok;
-                  RCLCPP_INFO(
-                    get_logger(),
-                    "Registration accepted and associated: incoming=%s assigned=%s",
-                    block.id.c_str(),
-                    assigned_id.c_str());
-                } else {
-                  RCLCPP_WARN(
-                    get_logger(),
-                    "Registration rejected after association checks for %s: %s",
-                    block.id.c_str(),
-                    upsert_reason.c_str());
-                }
-              } else {
-                if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery &&
-                  scene_discovery_coarse_fallback_enabled_)
-                {
-                  Block coarse_block;
-                  std::string coarse_reason;
-                  const bool coarse_ok = buildCoarseBlockFromMaskAndCloud(
-                    candidate.first,
-                    candidate.second,
-                    *cloud,
-                    cloud->header,
-                    have_camera_origin ? &camera_origin_world : nullptr,
-                    coarse_block,
-                    coarse_reason);
-                  if (coarse_ok) {
-                    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-                    std::string assigned_id;
-                    std::string upsert_reason;
-                    const bool upsert_ok = upsertRegisteredBlock(
-                      coarse_block,
-                      run_request,
-                      cloud->header,
-                      assigned_id,
-                      upsert_reason);
-                    if (upsert_ok) {
-                      ++coarse_upserts_ok;
-                      RCLCPP_WARN(
-                        get_logger(),
-                        "Registration rejected for block_%u (%s). Coarse fallback accepted: incoming=%s assigned=%s",
-                        candidate.first,
-                        reason.c_str(),
-                        coarse_block.id.c_str(),
-                        assigned_id.c_str());
-                      continue;
-                    }
-                    RCLCPP_WARN(
-                      get_logger(),
-                      "Registration rejected for block_%u (%s). Coarse fallback rejected: %s",
-                      candidate.first,
-                      reason.c_str(),
-                      upsert_reason.c_str());
-                  } else {
-                    sensor_msgs::msg::PointCloud2 cutout_cloud;
-                    std::string cutout_reason;
-                    const bool got_cutout = runRegistrationServiceCutoutSync(
-                      candidate.second, *cloud, run_request.registration_timeout_s, cutout_cloud, cutout_reason);
-                    if (got_cutout) {
-                      const bool coarse_from_cutout_ok = buildCoarseBlockFromCloudCentroid(
-                        candidate.first,
-                        candidate.second,
-                        cutout_cloud,
-                        cutout_cloud.header,
-                        have_camera_origin ? &camera_origin_world : nullptr,
-                        coarse_block,
-                        coarse_reason);
-                      if (coarse_from_cutout_ok) {
-                        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-                        std::string assigned_id;
-                        std::string upsert_reason;
-                        const bool upsert_ok = upsertRegisteredBlock(
-                          coarse_block,
-                          run_request,
-                          cloud->header,
-                          assigned_id,
-                          upsert_reason);
-                        if (upsert_ok) {
-                          ++coarse_upserts_ok;
-                          RCLCPP_WARN(
-                            get_logger(),
-                            "Registration rejected for block_%u (%s). Coarse fallback (cutout centroid) accepted: incoming=%s assigned=%s",
-                            candidate.first,
-                            reason.c_str(),
-                            coarse_block.id.c_str(),
-                            assigned_id.c_str());
-                          continue;
-                        }
-                        RCLCPP_WARN(
-                          get_logger(),
-                          "Registration rejected for block_%u (%s). Coarse fallback (cutout centroid) rejected: %s",
-                          candidate.first,
-                          reason.c_str(),
-                          upsert_reason.c_str());
-                      } else {
-                        RCLCPP_WARN(
-                          get_logger(),
-                          "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
-                          candidate.first,
-                          reason.c_str(),
-                          coarse_reason.c_str());
-                      }
-                    } else {
-                      RCLCPP_WARN(
-                        get_logger(),
-                        "Registration rejected for block_%u (%s). Coarse fallback unavailable: %s",
-                        candidate.first,
-                        reason.c_str(),
-                        cutout_reason.c_str());
-                    }
-                  }
-                }
-                RCLCPP_WARN(
-                  get_logger(),
-                  "Registration rejected for block_%u: %s",
-                  candidate.first,
-                  reason.c_str());
-              }
-            }
-          }
-
-          const auto t_reg_end = std::chrono::steady_clock::now();
-          const auto seg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            t_after_seg - t_start).count();
-          const auto track_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            t_after_track - t_after_seg).count();
-          const auto reg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            t_reg_end - t_reg_start).count();
-          const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            t_reg_end - t_start).count();
-          recordTiming(seg_ms, track_ms, reg_ms, total_ms);
-
-          publishPersistentWorld(cloud->header);
-          completeOneShotRequest(
-            run_request.sequence,
-            registrations_ok > 0 || run_request.mode == cbpwm::OneShotMode::kSceneDiscovery,
-            "Pose estimation finished (detections=" + std::to_string(seg_detection_count) +
-            ", tracked=" + std::to_string(tracked_count) +
-            ", registration_candidates=" + std::to_string(registration_candidates) +
-            ", registrations=" + std::to_string(registrations_ok) +
-            ", coarse_registrations=" + std::to_string(coarse_upserts_ok) + ").");
-
-          resetBusy();
-        } catch (const std::exception & e) {
-          RCLCPP_ERROR(get_logger(), "Segmentation stage failed: %s", e.what());
-          completeOneShotRequest(run_request.sequence, false, "Segmentation stage exception.");
-          resetBusy();
-        }
+        handleOneShotSegmentationResponse(seg_future, image, cloud, t_start, run_request);
       });
   }
 
@@ -2544,7 +2477,7 @@ private:
   std::string camera_info_frame_id_;
   bool refine_grasped_use_fk_roi_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
-  std::string refine_grasped_camera_frame_{"seyond"};
+  std::string refine_grasped_camera_frame_{};
   std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};
   Eigen::Matrix4d T_tcp_block_{Eigen::Matrix4d::Identity()};
   double roi_size_x_m_{0.60};

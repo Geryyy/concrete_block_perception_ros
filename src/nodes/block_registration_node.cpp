@@ -99,6 +99,50 @@ public:
   }
 
 private:
+  bool runPipelineFromRosInputs(
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const sensor_msgs::msg::Image & mask_msg,
+    const std::string & object_class,
+    bool allow_fk_seed,
+    cv::Mat & mask_cv,
+    RegistrationOutput & output)
+  {
+    geometry_msgs::msg::TransformStamped tf_cloud;
+    if (!lookupCloudTransform(cloud, tf_cloud)) {
+      return false;
+    }
+
+    auto scene_ptr = pointcloud2_to_open3d(cloud);
+    if (!scene_ptr || scene_ptr->points_.empty()) {
+      RCLCPP_WARN(get_logger(), "Empty scene cloud.");
+      return false;
+    }
+
+    mask_cv = cv_bridge::toCvCopy(mask_msg, "mono8")->image;
+
+    RegistrationInput input;
+    input.scene = *scene_ptr;
+    input.mask = mask_cv;
+    input.T_world_cloud = transformToEigen(tf_cloud);
+
+    if (allow_fk_seed && config_.local.use_fk_translation_seed && shouldUseFkSeedForGoal(object_class)) {
+      if (!resolveFkTranslationSeed(cloud.header, input.translation_seed_world)) {
+        RCLCPP_WARN(
+          get_logger(),
+          "FK translation seed requested but unavailable; falling back to global translation seed.");
+      } else {
+        input.has_translation_seed_world = true;
+      }
+    } else if (!allow_fk_seed && config_.local.use_fk_translation_seed) {
+      RCLCPP_DEBUG(
+        get_logger(),
+        "FK translation seed is action-mode gated; skipping for register_block_pose service call.");
+    }
+
+    output = pipeline_->run(input);
+    return true;
+  }
+
   void handle_register_service(
     const std::shared_ptr<RegisterBlockSrv::Request> request,
     std::shared_ptr<RegisterBlockSrv::Response> response)
@@ -110,31 +154,14 @@ private:
       return;
     }
 
-    geometry_msgs::msg::TransformStamped tf_cloud;
-    if (!lookupCloudTransform(request->cloud, tf_cloud)) {
+    cv::Mat mask;
+    RegistrationOutput output;
+    if (!runPipelineFromRosInputs(
+        request->cloud, request->mask, request->object_class, false, mask, output))
+    {
       response->success = false;
       return;
     }
-
-    auto scene_ptr = pointcloud2_to_open3d(request->cloud);
-    if (!scene_ptr || scene_ptr->points_.empty()) {
-      response->success = false;
-      return;
-    }
-
-    cv::Mat mask = cv_bridge::toCvCopy(request->mask, "mono8")->image;
-
-    RegistrationInput input;
-    input.scene = *scene_ptr;
-    input.mask = mask;
-    input.T_world_cloud = transformToEigen(tf_cloud);
-    if (config_.local.use_fk_translation_seed) {
-      RCLCPP_DEBUG(
-        get_logger(),
-        "FK translation seed is action-mode gated; skipping for register_block_pose service call.");
-    }
-
-    auto output = pipeline_->run(input);
     response->cutout_cloud = open3d_to_pointcloud2_colored(
       output.debug_scene,
       config_.world_frame,
@@ -234,63 +261,22 @@ private:
     // TF lookup
     publish_feedback("tf_lookup", 0.1f);
 
-    geometry_msgs::msg::TransformStamped tf_cloud;
-
-    if (!lookupCloudTransform(goal->cloud, tf_cloud)) {
-      RCLCPP_WARN(
-        get_logger(),
-        "TF lookup failed.");
-
-      result->success = false;
-      goal_handle->abort(result);
-      return;
-    }
-
     // Conversion
     publish_feedback("conversion", 0.2f);
 
-    auto scene_ptr =
-      pointcloud2_to_open3d(goal->cloud);
-
-    if (!scene_ptr || scene_ptr->points_.empty()) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Empty scene cloud.");
-
-      result->success = false;
-      goal_handle->abort(result);
-      return;
-    }
-
-    cv::Mat mask =
-      cv_bridge::toCvCopy(
-      goal->mask,
-      "mono8")->image;
+    cv::Mat mask;
 
     // Dump input
     debug_->dumpInput(*goal);
 
-    // Prepare pipeline input
-    RegistrationInput input;
-    input.scene = *scene_ptr;
-    input.mask = mask;
-    input.T_world_cloud =
-      transformToEigen(tf_cloud);
-    if (config_.local.use_fk_translation_seed && shouldUseFkSeedForGoal(goal->object_class)) {
-      if (!resolveFkTranslationSeed(goal->cloud.header, input.translation_seed_world)) {
-        RCLCPP_WARN(
-          get_logger(),
-          "FK translation seed requested but unavailable; falling back to global translation seed.");
-      } else {
-        input.has_translation_seed_world = true;
-      }
-    }
-
     // Run registration
     publish_feedback("registration", 0.6f);
-
-    auto output =
-      pipeline_->run(input);
+    RegistrationOutput output;
+    if (!runPipelineFromRosInputs(goal->cloud, goal->mask, goal->object_class, true, mask, output)) {
+      result->success = false;
+      goal_handle->abort(result);
+      return;
+    }
 
     // Always publish debug cutout/template attempt for offline diagnosis, even on failure.
     debug_->publishMask(goal->mask, mask);
