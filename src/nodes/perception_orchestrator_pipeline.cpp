@@ -1,210 +1,11 @@
-  void completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
-  {
-    std::lock_guard<std::mutex> lock(one_shot_mutex_);
-    if (sequence == 0 || sequence != active_one_shot_.sequence) {
-      return;
-    }
-    active_one_shot_ = OneShotRequest{};
-    one_shot_done_sequence_ = sequence;
-    one_shot_last_success_ = success;
-    one_shot_last_message_ = message;
-    one_shot_cv_.notify_all();
-    (void)applyPerceptionMode("IDLE");
-  }
+#include "concrete_block_perception/nodes/perception_orchestrator_node.hpp"
 
-  void handleRunPoseEstimation(
-    const std::shared_ptr<RunPoseSrv::Request> request,
-    std::shared_ptr<RunPoseSrv::Response> response)
-  {
-    const cbpwm::OneShotMode run_mode = cbpwm::parseOneShotMode(request->mode);
-    if (run_mode == cbpwm::OneShotMode::kNone) {
-      response->success = false;
-      response->message = "Unsupported mode: " + request->mode;
-      return;
-    }
+#include "concrete_block_perception/utils/img_utils.hpp"
+#include "concrete_block_perception/utils/visu_utils.hpp"
+#include "concrete_block_perception/utils/world_model_utils.hpp"
+#include "concrete_block_perception/world_model/scene_discovery_flow.hpp"
 
-    OneShotRequest run_request;
-    run_request.mode = run_mode;
-    run_request.target_block_id = request->target_block_id;
-    run_request.enable_debug = request->enable_debug;
-    run_request.registration_timeout_s =
-      request->timeout_s > 0.0f ? static_cast<double>(request->timeout_s) : 3.0;
-
-    if (run_mode == cbpwm::OneShotMode::kRefineGrasped && run_request.target_block_id.empty()) {
-      run_request.target_block_id = resolveGraspedBlockId();
-      if (run_request.target_block_id.empty()) {
-        response->success = false;
-        response->message = "No grasped block found (TASK_MOVE) and no target_block_id provided.";
-        return;
-      }
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(one_shot_mutex_);
-      if (active_one_shot_.mode != cbpwm::OneShotMode::kNone) {
-        response->success = false;
-        response->message = "Another one-shot request is already running.";
-        return;
-      }
-      run_request.sequence = ++one_shot_sequence_counter_;
-      active_one_shot_ = run_request;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(mode_mutex_);
-      debug_detection_overlay_enabled_ = request->enable_debug;
-      pipeline_mode_ = cbpwm::PipelineMode::kFull;
-    }
-
-    RCLCPP_INFO(
-      get_logger(),
-      "Scheduled one-shot pose estimation: mode=%s target=%s",
-      cbpwm::oneShotModeToString(run_mode),
-      run_request.target_block_id.empty() ? "<all>" : run_request.target_block_id.c_str());
-
-    const double timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
-    {
-      std::unique_lock<std::mutex> lock(one_shot_mutex_);
-      const bool done = one_shot_cv_.wait_for(
-        lock,
-        std::chrono::duration<double>(timeout_s),
-        [this, &run_request]() {
-          return one_shot_done_sequence_ >= run_request.sequence;
-        });
-      if (!done) {
-        if (active_one_shot_.sequence == run_request.sequence) {
-          active_one_shot_ = OneShotRequest{};
-        }
-        (void)applyPerceptionMode("IDLE");
-        response->success = false;
-        response->message = "Timed out waiting for one-shot result.";
-        response->blocks = latestWorldSnapshot();
-        return;
-      }
-      response->success = one_shot_last_success_;
-      response->message = one_shot_last_message_;
-    }
-
-    response->blocks = latestWorldSnapshot();
-  }
-
-  void handleSetMode(
-    const std::shared_ptr<SetModeSrv::Request> request,
-    std::shared_ptr<SetModeSrv::Response> response)
-  {
-    if (!applyPerceptionMode(request->mode)) {
-      response->success = false;
-      response->message = "Unsupported mode: " + request->mode;
-      return;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(mode_mutex_);
-      debug_detection_overlay_enabled_ = request->enable_debug;
-    }
-
-    response->success = true;
-    response->message = "Mode applied: " + request->mode;
-  }
-
-  void handleGetCoarseBlocks(
-    const std::shared_ptr<GetCoarseSrv::Request> request,
-    std::shared_ptr<GetCoarseSrv::Response> response)
-  {
-    (void)request;
-    response->success = true;
-    response->blocks = latestWorldSnapshot();
-    response->message = "ok";
-    RCLCPP_INFO(
-      get_logger(),
-      "GetCoarseBlocks -> %zu blocks (stamp=%u.%u)",
-      response->blocks.blocks.size(),
-      response->blocks.header.stamp.sec,
-      response->blocks.header.stamp.nanosec);
-  }
-
-  static bool isKnownTaskStatus(int32_t task_status)
-  {
-    return task_status == Block::TASK_UNKNOWN ||
-           task_status == Block::TASK_FREE ||
-           task_status == Block::TASK_MOVE ||
-           task_status == Block::TASK_PLACED ||
-           task_status == Block::TASK_REMOVED;
-  }
-
-  void handleSetBlockTaskStatus(
-    const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
-    std::shared_ptr<SetBlockTaskStatusSrv::Response> response)
-  {
-    const std::string block_id = request->block_id;
-    const int32_t target_task_status = request->task_status;
-
-    if (block_id.empty()) {
-      response->success = false;
-      response->message = "block_id must not be empty.";
-      RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
-      return;
-    }
-    if (!isKnownTaskStatus(target_task_status)) {
-      response->success = false;
-      response->message = "Unsupported task_status: " + std::to_string(target_task_status);
-      RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
-      return;
-    }
-
-    std_msgs::msg::Header publish_header;
-    publish_header.stamp = now();
-    {
-      const auto snapshot = latestWorldSnapshot();
-      publish_header.frame_id = snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
-    }
-
-    int32_t prev_task_status = Block::TASK_UNKNOWN;
-    {
-      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-      const auto it = persistent_world_.find(block_id);
-      if (it == persistent_world_.end()) {
-        response->success = false;
-        response->message = "Unknown block_id: " + block_id;
-        RCLCPP_WARN(get_logger(), "SetBlockTaskStatus rejected: %s", response->message.c_str());
-        return;
-      }
-
-      prev_task_status = it->second.task_status;
-      if (!cbpwm::isValidTaskTransition(prev_task_status, target_task_status)) {
-        response->success = false;
-        response->message =
-          std::string("Invalid task transition: ") +
-          cbpwm::taskStatusToString(prev_task_status) + " -> " +
-          cbpwm::taskStatusToString(target_task_status);
-        RCLCPP_WARN(
-          get_logger(),
-          "SetBlockTaskStatus rejected for block '%s': %s",
-          block_id.c_str(),
-          response->message.c_str());
-        return;
-      }
-
-      it->second.task_status = target_task_status;
-      // Keep block alive and reflect semantic state change immediately.
-      it->second.last_seen = publish_header.stamp;
-    }
-
-    publishPersistentWorld(publish_header);
-
-    response->success = true;
-    response->message =
-      std::string("Updated block '") + block_id + "' task_status to " +
-      cbpwm::taskStatusToString(target_task_status);
-    RCLCPP_INFO(
-      get_logger(),
-      "SetBlockTaskStatus applied: block '%s' %s -> %s",
-      block_id.c_str(),
-      cbpwm::taskStatusToString(prev_task_status),
-      cbpwm::taskStatusToString(target_task_status));
-  }
-
-  void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks)
+void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks)
   {
     auto marker_header = header;
     marker_header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -227,7 +28,7 @@
     }
   }
 
-  void publishPersistentWorld(const std_msgs::msg::Header & header)
+void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Header & header)
   {
     BlockArray out;
     out.header = header;
@@ -237,7 +38,7 @@
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
       for (auto it = persistent_world_.begin(); it != persistent_world_.end();) {
         const rclcpp::Time seen(it->second.last_seen);
-        if ((now_stamp - seen).seconds() > object_timeout_s_) {
+        if ((now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s) {
           it = persistent_world_.erase(it);
           continue;
         }
@@ -251,7 +52,7 @@
     publishWorldMarkers(out.header, out.blocks);
   }
 
-  void publishDetectionOverlay(
+void PerceptionOrchestratorNode::publishDetectionOverlay(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const vision_msgs::msg::Detection2DArray & detections,
     const sensor_msgs::msg::Image & mask_msg)
@@ -268,42 +69,8 @@
     det_debug_pub_->publish(*out);
   }
 
-  void recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms)
-  {
-    if (!perf_log_timing_enabled_) {
-      return;
-    }
 
-    std::lock_guard<std::mutex> lock(perf_mutex_);
-    perf_timing_count_++;
-    perf_seg_sum_ms_ += seg_ms;
-    perf_track_sum_ms_ += track_ms;
-    perf_reg_sum_ms_ += reg_ms;
-    perf_total_sum_ms_ += total_ms;
-
-    const uint64_t n = perf_timing_count_;
-    if ((n % static_cast<uint64_t>(perf_log_every_n_frames_)) != 0U) {
-      return;
-    }
-
-    const double avg_seg = static_cast<double>(perf_seg_sum_ms_) / static_cast<double>(n);
-    const double avg_track = static_cast<double>(perf_track_sum_ms_) / static_cast<double>(n);
-    const double avg_reg = static_cast<double>(perf_reg_sum_ms_) / static_cast<double>(n);
-    const double avg_total = static_cast<double>(perf_total_sum_ms_) / static_cast<double>(n);
-
-    RCLCPP_INFO(
-      get_logger(),
-      "Timing avg over %llu frames | seg %.1f ms | track %.1f ms | reg %.1f ms | total %.1f ms | dropped busy %llu | dropped sync %llu",
-      static_cast<unsigned long long>(n),
-      avg_seg,
-      avg_track,
-      avg_reg,
-      avg_total,
-      static_cast<unsigned long long>(dropped_busy_frames_.load()),
-      static_cast<unsigned long long>(dropped_sync_frames_.load()));
-  }
-
-  void syncCallback(
+void PerceptionOrchestratorNode::syncCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
   {
@@ -324,13 +91,13 @@
     const rclcpp::Time t_cloud(cloud->header.stamp);
     const double dt = std::abs((t_img - t_cloud).seconds());
 
-    if (dt > max_sync_delta_s_) {
+    if (dt > runtime_cfg_.max_sync_delta_s) {
       dropped_sync_frames_.fetch_add(1);
       RCLCPP_WARN(
         get_logger(),
         "Dropped frame pair due to sync delta %.4f s (> %.4f s)",
         dt,
-        max_sync_delta_s_);
+        runtime_cfg_.max_sync_delta_s);
       resetBusy();
       return;
     }
@@ -338,7 +105,7 @@
     processFrame(image, cloud);
   }
 
-  void handleOneShotSegmentationResponse(
+void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
     rclcpp::Client<SegmentSrv>::SharedFuture seg_future,
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
@@ -459,7 +226,7 @@
       scene_req.mode = run_request.mode;
       scene_req.target_block_id = run_request.target_block_id;
       scene_req.registration_timeout_s = run_request.registration_timeout_s;
-      scene_req.refine_target_max_distance_m = refine_target_max_distance_m_;
+      scene_req.refine_target_max_distance_m = runtime_cfg_.refine_target_max_distance_m;
 
       cbpwm::SceneFlowRuntime scene_rt;
       scene_rt.logger = get_logger();
@@ -560,7 +327,7 @@
     }
   }
 
-  void processFrame(
+void PerceptionOrchestratorNode::processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud)
   {

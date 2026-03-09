@@ -72,7 +72,7 @@ an explicit target id.
 
 ## Source of truth in code
 - `src/utils/world_model_utils.cpp`
-- `src/nodes/world_model_node.cpp`
+- `src/nodes/perception_orchestrator_node.cpp`
 - `srv/RunPoseEstimation.srv`
 - `srv/SetPerceptionMode.srv`
 - `srv/SetBlockTaskStatus.srv`

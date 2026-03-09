@@ -142,7 +142,11 @@ ament_target_dependencies(block_registration_node
 # WORLD MODEL NODE
 # ============================================================
 add_executable(world_model_node
-  src/nodes/world_model_node.cpp
+  src/nodes/perception_orchestrator_node.cpp
+  src/nodes/perception_orchestrator_core.cpp
+  src/nodes/perception_orchestrator_tf_roi.cpp
+  src/nodes/perception_orchestrator_services.cpp
+  src/nodes/perception_orchestrator_pipeline.cpp
   src/world_model/config_loader.cpp
   src/world_model/refine_flow.cpp
   src/world_model/scene_discovery_flow.cpp
