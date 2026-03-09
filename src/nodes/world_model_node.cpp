@@ -38,6 +38,10 @@
 #include "concrete_block_perception/utils/coarse_pose_utils.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
+#include "concrete_block_perception/world_model/registration_flow.hpp"
+#include "concrete_block_perception/world_model/roi_processing.hpp"
+#include "concrete_block_perception/world_model/roi_refinement.hpp"
+#include "concrete_block_perception/world_model/state_manager.hpp"
 #include "ros2_yolos_cpp/srv/segment_image.hpp"
 
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
@@ -95,17 +99,6 @@ class WorldModelNode : public rclcpp::Node
     double max_translation_jump_m{0.35};
     double max_z_delta_m{0.25};
     bool debug_log{true};
-  };
-
-  struct RoiInputConfig
-  {
-    double roi_size_x_m{0.60};
-    double roi_size_y_m{0.40};
-    double min_depth_m{0.5};
-    double max_depth_m{30.0};
-    double segmentation_timeout_s{3.0};
-    bool use_black_bg{false};
-    int blur_kernel_size{31};
   };
 
   struct StartupParameters
@@ -347,156 +340,16 @@ private:
   std::string resolveGraspedBlockId()
   {
     std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-    rclcpp::Time newest_time(0, 0, get_clock()->get_clock_type());
-    std::string best_id;
-    for (const auto & kv : persistent_world_) {
-      if (kv.second.task_status != Block::TASK_MOVE) {
-        continue;
-      }
-      const rclcpp::Time seen(kv.second.last_seen, get_clock()->get_clock_type());
-      if (best_id.empty() || seen > newest_time) {
-        newest_time = seen;
-        best_id = kv.first;
-      }
-    }
-    return best_id;
+    return cbpwm::resolveGraspedBlockId(persistent_world_, *get_clock());
   }
 
-  std::string nextWorldBlockId()
+  cbpwm::AssociationConfig associationConfig() const
   {
-    world_block_counter_++;
-    return "wm_block_" + std::to_string(world_block_counter_);
-  }
-
-  std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> buildRegistrationCandidates(
-    const SegmentSrv::Response & seg_res,
-    const OneShotRequest & run_request) const
-  {
-    std::vector<std::pair<uint32_t, sensor_msgs::msg::Image>> candidates;
-    candidates.reserve(seg_res.detections.detections.size());
-
-    cv::Mat full_mask = toCvMono(seg_res.mask);
-    const auto & detections = seg_res.detections.detections;
-    for (size_t i = 0; i < detections.size(); ++i) {
-      const auto & det = detections[i];
-      const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
-      const std::string det_id = "block_" + std::to_string(detection_id);
-
-      if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
-        run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
-        !run_request.target_block_id.empty() &&
-        run_request.target_block_id.rfind("block_", 0) == 0 &&
-        det_id != run_request.target_block_id)
-      {
-        continue;
-      }
-
-      cv::Mat det_mask = extract_mask_roi(full_mask, det);
-      if (det_mask.empty() || cv::countNonZero(det_mask) == 0) {
-        continue;
-      }
-
-      auto mask_msg = cv_bridge::CvImage(
-        seg_res.mask.header,
-        "mono8",
-        det_mask).toImageMsg();
-      candidates.emplace_back(detection_id, *mask_msg);
-    }
-    return candidates;
-  }
-
-  static double blockDistance(const Block & a, const Block & b)
-  {
-    const double dx = a.pose.position.x - b.pose.position.x;
-    const double dy = a.pose.position.y - b.pose.position.y;
-    const double dz = a.pose.position.z - b.pose.position.z;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
-  }
-
-  bool upsertRegisteredBlock(
-    Block incoming,
-    const OneShotRequest & run_request,
-    const std_msgs::msg::Header & header,
-    std::string & assigned_id,
-    std::string & reason)
-  {
-    const rclcpp::Time now_stamp(header.stamp, get_clock()->get_clock_type());
-    if (incoming.confidence < min_update_confidence_) {
-      reason = "confidence below min_update_confidence";
-      return false;
-    }
-
-    std::string forced_id;
-    if ((run_request.mode == cbpwm::OneShotMode::kRefineBlock ||
-      run_request.mode == cbpwm::OneShotMode::kRefineGrasped) &&
-      !run_request.target_block_id.empty())
-    {
-      forced_id = run_request.target_block_id;
-    }
-
-    const Block * best_match = nullptr;
-    double best_dist = std::numeric_limits<double>::infinity();
-    std::string best_id;
-
-    for (const auto & kv : persistent_world_) {
-      const auto & existing = kv.second;
-      const rclcpp::Time seen(existing.last_seen, get_clock()->get_clock_type());
-      const double age_s = (now_stamp - seen).seconds();
-      if (age_s > association_max_age_s_) {
-        continue;
-      }
-
-      const double dist = blockDistance(incoming, existing);
-      if (!cbpwm::shouldAssociateByDistance(
-          dist, association_max_distance_m_, incoming.confidence, min_update_confidence_))
-      {
-        continue;
-      }
-      if (dist < best_dist) {
-        best_dist = dist;
-        best_match = &existing;
-        best_id = kv.first;
-      }
-    }
-
-    if (!forced_id.empty()) {
-      assigned_id = forced_id;
-    } else if (best_match != nullptr) {
-      assigned_id = best_id;
-    } else {
-      assigned_id = nextWorldBlockId();
-    }
-
-    auto it = persistent_world_.find(assigned_id);
-    if (it != persistent_world_.end()) {
-      const auto & previous = it->second;
-      const rclcpp::Time prev_stamp(previous.last_seen, get_clock()->get_clock_type());
-      const rclcpp::Time incoming_stamp(incoming.last_seen, get_clock()->get_clock_type());
-      if (incoming_stamp < prev_stamp) {
-        reason = "stale update (incoming older than stored state)";
-        return false;
-      }
-
-      if (!cbpwm::isValidTaskTransition(previous.task_status, incoming.task_status)) {
-        reason = std::string("invalid task transition ") +
-          cbpwm::taskStatusToString(previous.task_status) + " -> " +
-          cbpwm::taskStatusToString(incoming.task_status);
-        return false;
-      }
-
-      if (previous.task_status != Block::TASK_UNKNOWN) {
-        incoming.task_status = previous.task_status;
-      }
-    } else {
-      incoming.task_status = Block::TASK_FREE;
-    }
-
-    incoming.id = assigned_id;
-    if (incoming.pose_status == Block::POSE_UNKNOWN) {
-      incoming.pose_status = Block::POSE_PRECISE;
-    }
-    persistent_world_[assigned_id] = incoming;
-    return true;
+    cbpwm::AssociationConfig cfg;
+    cfg.association_max_distance_m = association_max_distance_m_;
+    cfg.association_max_age_s = association_max_age_s_;
+    cfg.min_update_confidence = min_update_confidence_;
+    return cfg;
   }
 
   StartupParameters loadStartupParameters()
@@ -1012,10 +865,15 @@ private:
     std::lock_guard<std::mutex> lock(persistent_world_mutex_);
     std::string assigned_id;
     std::string upsert_reason;
-    const bool upsert_ok = upsertRegisteredBlock(
+    const bool upsert_ok = cbpwm::upsertRegisteredBlock(
+      persistent_world_,
+      world_block_counter_,
       coarse_block,
-      run_request,
+      run_request.mode,
+      run_request.target_block_id,
       cloud.header,
+      *get_clock(),
+      associationConfig(),
       assigned_id,
       upsert_reason);
     if (!upsert_ok) {
@@ -1047,39 +905,29 @@ private:
     RegistrationCounters & counters)
   {
     Block best_block;
-    bool best_valid = false;
     double best_dist = std::numeric_limits<double>::infinity();
+    const bool best_found = cbpwm::selectBestCandidateByExpectedPose(
+      candidates,
+      expected_target,
+      refine_target_max_distance_m_,
+      [this, &cloud, &run_request](
+        uint32_t detection_id,
+        const sensor_msgs::msg::Image & mask,
+        Block & out_block,
+        std::string & out_reason) {
+        return runRegistrationSync(
+          detection_id,
+          mask,
+          cloud,
+          cloud.header,
+          run_request.registration_timeout_s,
+          out_block,
+          out_reason);
+      },
+      best_block,
+      best_dist);
 
-    for (const auto & candidate : candidates) {
-      Block block;
-      std::string reason;
-      const bool ok = runRegistrationSync(
-        candidate.first,
-        candidate.second,
-        cloud,
-        cloud.header,
-        run_request.registration_timeout_s,
-        block,
-        reason);
-
-      if (!ok) {
-        RCLCPP_WARN(
-          get_logger(),
-          "Registration rejected for block_%u: %s",
-          candidate.first,
-          reason.c_str());
-        continue;
-      }
-
-      const double dist = blockDistance(block, expected_target);
-      if (dist < best_dist) {
-        best_dist = dist;
-        best_block = block;
-        best_valid = true;
-      }
-    }
-
-    if (!best_valid || best_dist > refine_target_max_distance_m_) {
+    if (!best_found) {
       RCLCPP_WARN(
         get_logger(),
         "Targeted refine failed for '%s': no candidate within %.3f m of expected pose.",
@@ -1091,10 +939,15 @@ private:
     std::lock_guard<std::mutex> lock(persistent_world_mutex_);
     std::string assigned_id;
     std::string upsert_reason;
-    const bool upsert_ok = upsertRegisteredBlock(
+    const bool upsert_ok = cbpwm::upsertRegisteredBlock(
+      persistent_world_,
+      world_block_counter_,
       best_block,
-      run_request,
+      run_request.mode,
+      run_request.target_block_id,
       cloud.header,
+      *get_clock(),
+      associationConfig(),
       assigned_id,
       upsert_reason);
     if (!upsert_ok) {
@@ -1137,10 +990,15 @@ private:
         std::lock_guard<std::mutex> lock(persistent_world_mutex_);
         std::string assigned_id;
         std::string upsert_reason;
-        const bool upsert_ok = upsertRegisteredBlock(
+        const bool upsert_ok = cbpwm::upsertRegisteredBlock(
+          persistent_world_,
+          world_block_counter_,
           block,
-          run_request,
+          run_request.mode,
+          run_request.target_block_id,
           cloud.header,
+          *get_clock(),
+          associationConfig(),
           assigned_id,
           upsert_reason);
         if (upsert_ok) {
@@ -1325,20 +1183,10 @@ private:
     }
   }
 
-  static geometry_msgs::msg::Quaternion toGeometryMsgQuaternion(const Eigen::Quaterniond & q)
-  {
-    geometry_msgs::msg::Quaternion out;
-    out.x = q.x();
-    out.y = q.y();
-    out.z = q.z();
-    out.w = q.w();
-    return out;
-  }
-
   bool buildRoiMaskFromPrediction(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const Eigen::Vector3d & p_camera,
-    const RoiInputConfig & roi_cfg,
+    const cbpwm::RoiInputConfig & roi_cfg,
     cv::Mat & roi_mask,
     cv::Rect & roi_rect,
     std::string & reason)
@@ -1387,111 +1235,6 @@ private:
     return true;
   }
 
-  sensor_msgs::msg::Image::SharedPtr buildRoiSegmentationInputImage(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const cv::Rect & roi_rect,
-    const RoiInputConfig & roi_cfg)
-  {
-    cv::Mat image_bgr = toCvBgr(*image);
-    cv::Mat roi_image_full;
-    if (roi_cfg.use_black_bg) {
-      roi_image_full = cv::Mat::zeros(image_bgr.size(), image_bgr.type());
-    } else {
-      int k = std::max(1, roi_cfg.blur_kernel_size);
-      if ((k % 2) == 0) {
-        ++k;
-      }
-      cv::GaussianBlur(image_bgr, roi_image_full, cv::Size(k, k), 0.0, 0.0);
-    }
-    image_bgr(roi_rect).copyTo(roi_image_full(roi_rect));
-    return cv_bridge::CvImage(image->header, "bgr8", roi_image_full).toImageMsg();
-  }
-
-  bool roiSegmentationToFullMask(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const cv::Mat & roi_mask,
-    const sensor_msgs::msg::Image::SharedPtr & roi_image_msg,
-    const RoiInputConfig & roi_cfg,
-    cv::Mat & full_seg_mask,
-    size_t & detections_count,
-    std::string & reason)
-  {
-    SegmentSrv::Response::SharedPtr seg_res;
-    if (!runSegmentationSync(*roi_image_msg, roi_cfg.segmentation_timeout_s, seg_res, reason)) {
-      return false;
-    }
-
-    cv::Mat seg_mask_roi = toCvMono(seg_res->mask);
-    if (seg_mask_roi.empty()) {
-      reason = "empty mask";
-      return false;
-    }
-
-    if (seg_mask_roi.cols != static_cast<int>(image->width) ||
-      seg_mask_roi.rows != static_cast<int>(image->height))
-    {
-      cv::resize(
-        seg_mask_roi,
-        seg_mask_roi,
-        cv::Size(static_cast<int>(image->width), static_cast<int>(image->height)),
-        0.0,
-        0.0,
-        cv::INTER_NEAREST);
-    }
-
-    full_seg_mask = seg_mask_roi.clone();
-    cv::bitwise_and(full_seg_mask, roi_mask, full_seg_mask);
-    detections_count = seg_res->detections.detections.size();
-    if (cv::countNonZero(full_seg_mask) == 0) {
-      reason = "segmentation returned empty object mask";
-      return false;
-    }
-    return true;
-  }
-
-  void publishRoiDebugOverlay(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const cv::Rect & roi_rect)
-  {
-    if (!det_debug_pub_) {
-      return;
-    }
-    cv::Mat img = toCvBgr(*image);
-    cv::rectangle(img, roi_rect, cv::Scalar(0, 0, 255), 2);
-    cv::circle(
-      img,
-      cv::Point(roi_rect.x + roi_rect.width / 2, roi_rect.y + roi_rect.height / 2),
-      4,
-      cv::Scalar(0, 0, 255),
-      cv::FILLED);
-    auto out = cv_bridge::CvImage(image->header, "bgr8", img).toImageMsg();
-    det_debug_pub_->publish(*out);
-  }
-
-  void publishRoiSegmentationDebugOverlay(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const cv::Rect & roi_rect,
-    const cv::Mat & full_mask)
-  {
-    if (!det_debug_pub_) {
-      return;
-    }
-
-    cv::Mat img = toCvBgr(*image);
-    if (!full_mask.empty()) {
-      overlayMask(img, full_mask, cv::Scalar(255, 255, 0), 0.35);
-    }
-    cv::rectangle(img, roi_rect, cv::Scalar(0, 0, 255), 2);
-    cv::circle(
-      img,
-      cv::Point(roi_rect.x + roi_rect.width / 2, roi_rect.y + roi_rect.height / 2),
-      4,
-      cv::Scalar(0, 0, 255),
-      cv::FILLED);
-    auto out = cv_bridge::CvImage(image->header, "bgr8", img).toImageMsg();
-    det_debug_pub_->publish(*out);
-  }
-
   void processRefineGraspedWithFkRoi(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
@@ -1521,7 +1264,7 @@ private:
 
     cv::Mat roi_mask;
     cv::Rect roi_rect;
-    RoiInputConfig roi_cfg;
+    cbpwm::RoiInputConfig roi_cfg;
     roi_cfg.roi_size_x_m = roi_size_x_m_;
     roi_cfg.roi_size_y_m = roi_size_y_m_;
     roi_cfg.min_depth_m = refine_grasped_min_depth_m_;
@@ -1540,7 +1283,7 @@ private:
       return;
     }
 
-    auto roi_image_msg = buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
+    auto roi_image_msg = cbpwm::buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
 
     if (debug_refine_grasped_roi_input_enabled_ && refine_grasped_roi_input_pub_) {
       refine_grasped_roi_input_pub_->publish(*roi_image_msg);
@@ -1548,11 +1291,18 @@ private:
 
     cv::Mat full_seg_mask;
     size_t detections_count = 0;
-    if (!roiSegmentationToFullMask(
+    if (!cbpwm::roiSegmentationToFullMask(
         image,
         roi_mask,
         roi_image_msg,
         roi_cfg,
+        [this](
+          const sensor_msgs::msg::Image & in_image,
+          double timeout_s,
+          SegmentSrv::Response::SharedPtr & out_response,
+          std::string & out_reason) {
+          return runSegmentationSync(in_image, timeout_s, out_response, out_reason);
+        },
         full_seg_mask,
         detections_count,
         reason))
@@ -1568,7 +1318,9 @@ private:
     }
 
     if (debug_detection_overlay_enabled_ && det_debug_pub_) {
-      publishRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask);
+      if (auto dbg = cbpwm::buildRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask)) {
+        det_debug_pub_->publish(*dbg);
+      }
     }
 
     RCLCPP_INFO(
@@ -1607,34 +1359,28 @@ private:
           fusion_ok = false;
           fusion_reason = "unsupported pose_fusion.mode='" + refine_grasped_pose_fusion_.mode + "'";
         } else {
-          const Eigen::Vector3d p_reg(
-            block.pose.position.x,
-            block.pose.position.y,
-            block.pose.position.z);
-          const double residual_norm = (p_reg - p_world_fk).norm();
-          const double z_delta = std::abs(p_reg.z() - p_world_fk.z());
-
-          if (residual_norm > refine_grasped_pose_fusion_.max_translation_jump_m) {
-            fusion_ok = false;
-            fusion_reason = "translation jump too large: residual=" + std::to_string(residual_norm) +
-              "m > " + std::to_string(refine_grasped_pose_fusion_.max_translation_jump_m) + "m";
-          } else if (z_delta > refine_grasped_pose_fusion_.max_z_delta_m) {
-            fusion_ok = false;
-            fusion_reason = "z jump too large: |dz|=" + std::to_string(z_delta) +
-              "m > " + std::to_string(refine_grasped_pose_fusion_.max_z_delta_m) + "m";
-          } else {
-            block.pose.orientation = toGeometryMsgQuaternion(q_world_fk);
-          }
+          const auto fusion_result = cbpwm::fuseRegistrationPositionWithFkOrientation(
+            block.pose,
+            p_world_fk,
+            q_world_fk,
+            refine_grasped_pose_fusion_.max_translation_jump_m,
+            refine_grasped_pose_fusion_.max_z_delta_m);
+          fusion_ok = fusion_result.success;
+          fusion_reason = fusion_result.reason;
 
           if (refine_grasped_pose_fusion_.debug_log) {
+            const Eigen::Vector3d p_reg(
+              block.pose.position.x,
+              block.pose.position.y,
+              block.pose.position.z);
             RCLCPP_INFO(
               get_logger(),
               "REFINE_GRASPED pose fusion: source=FK_ORIENTATION fk_pos=[%.3f %.3f %.3f] reg_pos=[%.3f %.3f %.3f] fused_pos=[%.3f %.3f %.3f] residual=%.3f z_delta=%.3f gate=%s",
               p_world_fk.x(), p_world_fk.y(), p_world_fk.z(),
               p_reg.x(), p_reg.y(), p_reg.z(),
               block.pose.position.x, block.pose.position.y, block.pose.position.z,
-              residual_norm,
-              z_delta,
+              fusion_result.residual_norm,
+              fusion_result.z_delta,
               fusion_ok ? "PASS" : "FAIL");
           }
         }
@@ -1651,10 +1397,15 @@ private:
         std::lock_guard<std::mutex> lock(persistent_world_mutex_);
         std::string assigned_id;
         std::string upsert_reason;
-        const bool upsert_ok = upsertRegisteredBlock(
+        const bool upsert_ok = cbpwm::upsertRegisteredBlock(
+          persistent_world_,
+          world_block_counter_,
           block,
-          run_request,
+          run_request.mode,
+          run_request.target_block_id,
           cloud->header,
+          *get_clock(),
+          associationConfig(),
           assigned_id,
           upsert_reason);
         if (upsert_ok) {
@@ -1732,7 +1483,7 @@ private:
       expected_target = it->second;
     }
 
-    RoiInputConfig roi_cfg;
+    cbpwm::RoiInputConfig roi_cfg;
     roi_cfg.roi_size_x_m = refine_block_roi_size_x_m_;
     roi_cfg.roi_size_y_m = refine_block_roi_size_y_m_;
     roi_cfg.min_depth_m = refine_block_min_depth_m_;
@@ -1759,14 +1510,21 @@ private:
       return false;
     }
 
-    auto roi_image_msg = buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
+    auto roi_image_msg = cbpwm::buildRoiSegmentationInputImage(image, roi_rect, roi_cfg);
     cv::Mat full_seg_mask;
     size_t detections_count = 0;
-    if (!roiSegmentationToFullMask(
+    if (!cbpwm::roiSegmentationToFullMask(
         image,
         roi_mask,
         roi_image_msg,
         roi_cfg,
+        [this](
+          const sensor_msgs::msg::Image & in_image,
+          double timeout_s,
+          SegmentSrv::Response::SharedPtr & out_response,
+          std::string & out_reason) {
+          return runSegmentationSync(in_image, timeout_s, out_response, out_reason);
+        },
         full_seg_mask,
         detections_count,
         reason))
@@ -1782,7 +1540,9 @@ private:
     }
 
     if (debug_detection_overlay_enabled_ && det_debug_pub_) {
-      publishRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask);
+      if (auto dbg = cbpwm::buildRoiSegmentationDebugOverlay(image, roi_rect, full_seg_mask)) {
+        det_debug_pub_->publish(*dbg);
+      }
     }
 
     RCLCPP_INFO(
@@ -1812,7 +1572,7 @@ private:
 
     size_t registrations_ok = 0;
     if (registration_ok) {
-      const double dist = blockDistance(block, expected_target);
+      const double dist = cbpwm::blockDistance(block, expected_target);
       if (dist > refine_target_max_distance_m_) {
         reg_reason = "registered pose too far from target: dist=" + std::to_string(dist) + " m";
         RCLCPP_WARN(get_logger(), "REFINE_BLOCK pose+ROI rejected: %s", reg_reason.c_str());
@@ -1820,10 +1580,15 @@ private:
         std::lock_guard<std::mutex> lock(persistent_world_mutex_);
         std::string assigned_id;
         std::string upsert_reason;
-        const bool upsert_ok = upsertRegisteredBlock(
+        const bool upsert_ok = cbpwm::upsertRegisteredBlock(
+          persistent_world_,
+          world_block_counter_,
           block,
-          run_request,
+          run_request.mode,
+          run_request.target_block_id,
           cloud->header,
+          *get_clock(),
+          associationConfig(),
           assigned_id,
           upsert_reason);
         if (upsert_ok) {
@@ -2261,7 +2026,8 @@ private:
         return;
       }
 
-      auto candidates = buildRegistrationCandidates(*seg_res, run_request);
+      auto candidates = cbpwm::buildRegistrationCandidates(
+        *seg_res, run_request.mode, run_request.target_block_id);
 
       const size_t registration_candidates = candidates.size();
       RCLCPP_INFO(
