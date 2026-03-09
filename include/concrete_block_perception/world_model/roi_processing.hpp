@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 
+#include <Eigen/Dense>
 #include <opencv2/core.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
@@ -22,6 +23,17 @@ struct RoiInputConfig
   int blur_kernel_size{31};
 };
 
+struct ProjectionIntrinsics
+{
+  bool valid{false};
+  double fx{0.0};
+  double fy{0.0};
+  double cx{0.0};
+  double cy{0.0};
+  uint32_t width{0};
+  uint32_t height{0};
+};
+
 using RunSegmentationSyncFn = std::function<bool(
     const sensor_msgs::msg::Image &,
     double,
@@ -32,6 +44,15 @@ sensor_msgs::msg::Image::SharedPtr buildRoiSegmentationInputImage(
   const sensor_msgs::msg::Image::ConstSharedPtr & image,
   const cv::Rect & roi_rect,
   const RoiInputConfig & roi_cfg);
+
+bool buildRoiMaskFromPrediction(
+  const ProjectionIntrinsics & intr,
+  const sensor_msgs::msg::Image::ConstSharedPtr & image,
+  const Eigen::Vector3d & p_camera,
+  const RoiInputConfig & roi_cfg,
+  cv::Mat & roi_mask,
+  cv::Rect & roi_rect,
+  std::string & reason);
 
 bool roiSegmentationToFullMask(
   const sensor_msgs::msg::Image::ConstSharedPtr & image,
@@ -49,4 +70,3 @@ sensor_msgs::msg::Image::SharedPtr buildRoiSegmentationDebugOverlay(
   const cv::Mat & full_seg_mask);
 
 }  // namespace cbp::world_model
-

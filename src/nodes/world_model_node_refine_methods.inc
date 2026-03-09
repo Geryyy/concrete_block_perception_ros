@@ -6,48 +6,19 @@
     cv::Rect & roi_rect,
     std::string & reason)
   {
-    CameraIntrinsics intr;
+    cbpwm::ProjectionIntrinsics intr;
     {
       std::lock_guard<std::mutex> lock(camera_info_mutex_);
-      intr = camera_intrinsics_;
+      intr.valid = camera_intrinsics_.valid;
+      intr.fx = camera_intrinsics_.fx;
+      intr.fy = camera_intrinsics_.fy;
+      intr.cx = camera_intrinsics_.cx;
+      intr.cy = camera_intrinsics_.cy;
+      intr.width = camera_intrinsics_.width;
+      intr.height = camera_intrinsics_.height;
     }
-    if (!intr.valid) {
-      reason = "camera_info not received or invalid intrinsics";
-      return false;
-    }
-
-    const double z = p_camera.z();
-    if (!std::isfinite(z) || z < roi_cfg.min_depth_m || z > roi_cfg.max_depth_m) {
-      reason = "predicted block depth out of bounds: z=" + std::to_string(z);
-      return false;
-    }
-
-    const double u = (intr.fx * p_camera.x() / z) + intr.cx;
-    const double v = (intr.fy * p_camera.y() / z) + intr.cy;
-    if (!std::isfinite(u) || !std::isfinite(v)) {
-      reason = "projected image point is invalid";
-      return false;
-    }
-
-    const int roi_w_px = std::max(
-      1, static_cast<int>(std::lround(intr.fx * roi_cfg.roi_size_x_m / z)));
-    const int roi_h_px = std::max(
-      1, static_cast<int>(std::lround(intr.fy * roi_cfg.roi_size_y_m / z)));
-    cv::Rect requested_roi(
-      static_cast<int>(std::lround(u)) - roi_w_px / 2,
-      static_cast<int>(std::lround(v)) - roi_h_px / 2,
-      roi_w_px,
-      roi_h_px);
-    const cv::Rect image_rect(0, 0, static_cast<int>(image->width), static_cast<int>(image->height));
-    roi_rect = requested_roi & image_rect;
-    if (roi_rect.width < 2 || roi_rect.height < 2) {
-      reason = "ROI outside image or too small after clamping";
-      return false;
-    }
-
-    roi_mask = cv::Mat::zeros(image_rect.height, image_rect.width, CV_8UC1);
-    cv::rectangle(roi_mask, roi_rect, cv::Scalar(255), cv::FILLED);
-    return true;
+    return cbpwm::buildRoiMaskFromPrediction(
+      intr, image, p_camera, roi_cfg, roi_mask, roi_rect, reason);
   }
 
   void processRefineGraspedWithFkRoi(
@@ -440,4 +411,3 @@
     resetBusy();
     return true;
   }
-
