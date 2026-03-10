@@ -22,6 +22,7 @@ struct BlockRegistrationConfig
   PreprocessingParams preproc;
   GlobalRegistrationParams glob;
   LocalRegistrationParams local;
+  TeaserRegistrationParams teaser;
 
   bool publish_debug_cutout{true};
   bool publish_debug_mask{true};

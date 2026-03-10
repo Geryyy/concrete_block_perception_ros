@@ -1,6 +1,7 @@
 #include "concrete_block_perception/registration/registration_config.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <cmath>
 
@@ -64,6 +65,20 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<bool>("loc_reg.enable_point_to_point_fallback", true);
   node.declare_parameter<std::string>("loc_reg.fk_seed.tcp_frame", "elastic/K8_tool_center_point");
   node.declare_parameter<std::vector<double>>("loc_reg.fk_seed.tcp_to_block_xyz", {0.0, 0.0, 0.0});
+
+  node.declare_parameter<double>("teaser_reg.noise_bound", 0.02);
+  node.declare_parameter<double>("teaser_reg.cbar2", 1.0);
+  node.declare_parameter<bool>("teaser_reg.estimate_scaling", false);
+  node.declare_parameter<double>("teaser_reg.rotation_gnc_factor", 1.4);
+  node.declare_parameter<int>("teaser_reg.rotation_max_iterations", 100);
+  node.declare_parameter<double>("teaser_reg.rotation_cost_threshold", 1e-6);
+  node.declare_parameter<double>("teaser_reg.max_clique_time_limit_s", 0.2);
+  node.declare_parameter<int>("teaser_reg.min_correspondences", 30);
+  node.declare_parameter<int>("teaser_reg.max_template_points", 1000);
+  node.declare_parameter<double>("teaser_reg.nn_corr_max_dist", 0.08);
+  node.declare_parameter<bool>("teaser_reg.enable_icp_refinement", true);
+  node.declare_parameter<double>("teaser_reg.icp_refine_dist", 0.04);
+  node.declare_parameter<double>("teaser_reg.eval_corr_dist", 0.04);
 
   node.declare_parameter<bool>("debug.publish_cutout", true);
   node.declare_parameter<bool>("debug.publish_mask", true);
@@ -204,6 +219,35 @@ load_registration_config(rclcpp::Node & node)
       fk_seed_tcp_to_block_xyz[2]);
   }
 
+  cfg.teaser.noise_bound =
+    node.get_parameter("teaser_reg.noise_bound").as_double();
+  cfg.teaser.cbar2 =
+    node.get_parameter("teaser_reg.cbar2").as_double();
+  cfg.teaser.estimate_scaling =
+    node.get_parameter("teaser_reg.estimate_scaling").as_bool();
+  cfg.teaser.rotation_gnc_factor =
+    node.get_parameter("teaser_reg.rotation_gnc_factor").as_double();
+  cfg.teaser.rotation_max_iterations =
+    node.get_parameter("teaser_reg.rotation_max_iterations").as_int();
+  cfg.teaser.rotation_cost_threshold =
+    node.get_parameter("teaser_reg.rotation_cost_threshold").as_double();
+  cfg.teaser.max_clique_time_limit_s =
+    node.get_parameter("teaser_reg.max_clique_time_limit_s").as_double();
+  const int teaser_min_corr =
+    static_cast<int>(node.get_parameter("teaser_reg.min_correspondences").as_int());
+  const int teaser_max_tpl_pts =
+    static_cast<int>(node.get_parameter("teaser_reg.max_template_points").as_int());
+  cfg.teaser.min_correspondences = static_cast<size_t>(std::max(3, teaser_min_corr));
+  cfg.teaser.max_template_points = static_cast<size_t>(std::max(16, teaser_max_tpl_pts));
+  cfg.teaser.nn_corr_max_dist =
+    node.get_parameter("teaser_reg.nn_corr_max_dist").as_double();
+  cfg.teaser.enable_icp_refinement =
+    node.get_parameter("teaser_reg.enable_icp_refinement").as_bool();
+  cfg.teaser.icp_refine_dist =
+    node.get_parameter("teaser_reg.icp_refine_dist").as_double();
+  cfg.teaser.eval_corr_dist =
+    node.get_parameter("teaser_reg.eval_corr_dist").as_double();
+
   // ------------------------------------------------------------
   // Debug + dump
   // ------------------------------------------------------------
@@ -255,6 +299,13 @@ load_registration_config(rclcpp::Node & node)
     cfg.local.use_fk_translation_seed ? "true" : "false",
     cfg.local.enable_point_to_point_fallback ? "true" : "false",
     cfg.local.icp_dist_multipliers.size());
+  RCLCPP_INFO(
+    node.get_logger(),
+    "  teaser_reg: noise_bound=%.3f min_corr=%zu nn_max_dist=%.3f icp_refine=%s",
+    cfg.teaser.noise_bound,
+    cfg.teaser.min_correspondences,
+    cfg.teaser.nn_corr_max_dist,
+    cfg.teaser.enable_icp_refinement ? "true" : "false");
 
   return cfg;
 }

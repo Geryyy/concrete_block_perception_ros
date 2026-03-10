@@ -69,6 +69,28 @@ registration_node:
         # Translation from tcp_frame origin to block center in tcp_frame coordinates [m].
         tcp_to_block_xyz: [0.0, 0.0, 0.9]
 
+    # ------------------------------------------------------------
+    # TEASER++ registration (drop-in backend)
+    # ------------------------------------------------------------
+    teaser_reg:
+      # Robust solver noise bound [m]
+      noise_bound: 0.02
+      cbar2: 1.0
+      estimate_scaling: false
+      rotation_gnc_factor: 1.4
+      rotation_max_iterations: 100
+      rotation_cost_threshold: 1.0e-6
+      # Keep clique solve bounded for runtime predictability.
+      max_clique_time_limit_s: 0.2
+      # Nearest-neighbor correspondence generation
+      min_correspondences: 30
+      max_template_points: 1000
+      nn_corr_max_dist: 0.08
+      # Optional post-TEASER local refinement and evaluation
+      enable_icp_refinement: true
+      icp_refine_dist: 0.04
+      eval_corr_dist: 0.04
+
     debug:
       publish_cutout: true
       publish_mask: false

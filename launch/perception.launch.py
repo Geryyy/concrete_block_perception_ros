@@ -4,7 +4,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from ament_index_python import get_package_share_directory
-from launch.substitutions import LaunchConfiguration, PathSubstitution
+from launch.substitutions import LaunchConfiguration, PathSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution
@@ -54,6 +54,12 @@ def generate_launch_description():
         description="Whether to start world_model_node",
     )
 
+    registration_backend_arg = DeclareLaunchArgument(
+        "registration_backend",
+        default_value="legacy",
+        description="Registration backend: legacy | teaser",
+    )
+
     block_detection_tracking_params = PathJoinSubstitution(
         [
             FindPackageShare("concrete_block_perception"),
@@ -94,6 +100,7 @@ def generate_launch_description():
             sim_time_arg,
             mode_arg,
             start_world_model_arg,
+            registration_backend_arg,
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -166,6 +173,33 @@ def generate_launch_description():
                 ],
                 output="screen",
                 emulate_tty=True,
+                condition=IfCondition(
+                    PythonExpression(
+                        [
+                            "'", LaunchConfiguration("registration_backend"), "' == 'legacy'"
+                        ]
+                    )
+                ),
+            ),
+            Node(
+                package="concrete_block_registration_teaser",
+                executable="block_registration_teaser_node",
+                name="registration_node",
+                parameters=[block_registration_params],
+                remappings=[
+                    ("debug/cutout_cloud", "/cbp/debug/registration_cutout"),
+                    ("debug/template_cloud", "/cbp/debug/registration_template"),
+                    ("debug/segmentation_mask", "/cbp/debug/registration_mask"),
+                ],
+                output="screen",
+                emulate_tty=True,
+                condition=IfCondition(
+                    PythonExpression(
+                        [
+                            "'", LaunchConfiguration("registration_backend"), "' == 'teaser'"
+                        ]
+                    )
+                ),
             ),
             Node(
                 package="concrete_block_perception",

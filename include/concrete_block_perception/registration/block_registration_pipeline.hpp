@@ -46,6 +46,23 @@ struct LocalRegistrationParams
   bool enable_point_to_point_fallback{true};
 };
 
+struct TeaserRegistrationParams
+{
+  double noise_bound{0.02};
+  double cbar2{1.0};
+  bool estimate_scaling{false};
+  double rotation_gnc_factor{1.4};
+  int rotation_max_iterations{100};
+  double rotation_cost_threshold{1e-6};
+  double max_clique_time_limit_s{0.2};
+  size_t min_correspondences{30};
+  size_t max_template_points{1000};
+  double nn_corr_max_dist{0.08};
+  bool enable_icp_refinement{true};
+  double icp_refine_dist{0.04};
+  double eval_corr_dist{0.04};
+};
+
 struct RegistrationInput
 {
   open3d::geometry::PointCloud scene;

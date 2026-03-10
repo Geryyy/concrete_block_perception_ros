@@ -3,6 +3,7 @@ set(CMAKE_POLICY_DEFAULT_CMP0072 NEW)
 
 project(concrete_block_perception)
 
+
 # ------------------------------------------------------------
 # Compiler warnings
 # ------------------------------------------------------------
@@ -36,6 +37,7 @@ find_package(ros2_yolos_cpp REQUIRED)
 # External library
 # ------------------------------------------------------------
 add_subdirectory(external/pcd_block_estimation)
+
 
 # ------------------------------------------------------------
 # Interfaces
@@ -202,6 +204,8 @@ install(TARGETS
 install(PROGRAMS
   scripts/detection_node.py
   scripts/segmentation_node.py
+  scripts/run_pose_estimation_benchmark.py
+  scripts/compare_backend_results.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
