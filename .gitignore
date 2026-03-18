@@ -1,2 +1,12 @@
-*.pyc
-__pycache__
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+install/
+log/
+.vscode/

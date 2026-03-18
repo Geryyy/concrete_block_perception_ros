@@ -28,3 +28,36 @@ TEST(WorldModelUtils, TaskStatusToString) {
   EXPECT_STREQ(cbpwm::taskStatusToString(Block::TASK_PLACED), "TASK_PLACED");
 }
 
+TEST(WorldModelUtils, ResolvePerceptionModeConfigForStagedWorkflow) {
+  cbpwm::PerceptionModeConfig cfg;
+
+  ASSERT_TRUE(cbpwm::resolvePerceptionModeConfig("IDLE", cfg));
+  EXPECT_EQ(cfg.perception_mode, cbpwm::PerceptionMode::kIdle);
+  EXPECT_EQ(cfg.pipeline_mode, cbpwm::PipelineMode::kIdle);
+  EXPECT_FALSE(cfg.registration_on_demand);
+
+  ASSERT_TRUE(cbpwm::resolvePerceptionModeConfig("PRE_GRASP", cfg));
+  EXPECT_EQ(cfg.perception_mode, cbpwm::PerceptionMode::kPreGrasp);
+  EXPECT_EQ(cfg.pipeline_mode, cbpwm::PipelineMode::kFull);
+  EXPECT_TRUE(cfg.registration_on_demand);
+
+  ASSERT_TRUE(cbpwm::resolvePerceptionModeConfig("ASSEMBLY_EXECUTE", cfg));
+  EXPECT_EQ(cfg.perception_mode, cbpwm::PerceptionMode::kAssemblyExecute);
+  EXPECT_EQ(cfg.pipeline_mode, cbpwm::PipelineMode::kTrack);
+  EXPECT_FALSE(cfg.registration_on_demand);
+}
+
+TEST(WorldModelUtils, ParseOneShotModes) {
+  EXPECT_EQ(
+    cbpwm::parseOneShotMode("SCENE_DISCOVERY"),
+    cbpwm::OneShotMode::kSceneDiscovery);
+  EXPECT_EQ(
+    cbpwm::parseOneShotMode("refine_block"),
+    cbpwm::OneShotMode::kRefineBlock);
+  EXPECT_EQ(
+    cbpwm::parseOneShotMode("Refine_Grasped"),
+    cbpwm::OneShotMode::kRefineGrasped);
+  EXPECT_EQ(
+    cbpwm::parseOneShotMode("unsupported"),
+    cbpwm::OneShotMode::kNone);
+}

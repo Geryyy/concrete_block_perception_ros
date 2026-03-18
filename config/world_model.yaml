@@ -5,7 +5,7 @@ world_model_node:
     # segment | track | register | full
     # ----------------------------------
     pipeline_mode: "full"
-    # BT-facing runtime mode (FULL keeps backward-compatible behavior)
+    # BT-facing runtime mode for the staged wall-build workflow.
     perception_mode: "IDLE"
 
     # ----------------------------------

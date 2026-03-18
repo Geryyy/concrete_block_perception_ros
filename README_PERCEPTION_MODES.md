@@ -14,7 +14,7 @@ These are handled by `world_model_node` and mapped to pipeline behavior:
 - `PRE_ASSEMBLY`: full pipeline, registration on demand
 - `ASSEMBLY_EXECUTE`: tracking only
 
-Legacy-compatible aliases are also accepted:
+Historical low-level aliases are still accepted for commissioning helpers:
 - `SEGMENT`, `TRACK`, `REGISTER`, `FULL`
 
 ## 2) Low-level pipeline modes (`pipeline_mode`)
