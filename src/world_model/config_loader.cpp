@@ -1,9 +1,220 @@
 #include "concrete_block_perception/world_model/config_loader.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <unordered_set>
+
+#include "concrete_block_perception/msg/block.hpp"
+#include <yaml-cpp/yaml.h>
 
 namespace cbp::world_model
 {
+
+namespace
+{
+
+using concrete_block_perception::msg::Block;
+
+int parsePoseStatus(const YAML::Node & node, int fallback)
+{
+  if (!node || node.IsNull()) {
+    return fallback;
+  }
+  if (node.IsScalar()) {
+    const std::string value = node.as<std::string>("");
+    if (value == "POSE_UNKNOWN") {
+      return Block::POSE_UNKNOWN;
+    }
+    if (value == "POSE_COARSE") {
+      return Block::POSE_COARSE;
+    }
+    if (value == "POSE_PRECISE") {
+      return Block::POSE_PRECISE;
+    }
+    try {
+      return std::stoi(value);
+    } catch (...) {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+int parseTaskStatus(const YAML::Node & node, int fallback)
+{
+  if (!node || node.IsNull()) {
+    return fallback;
+  }
+  if (node.IsScalar()) {
+    const std::string value = node.as<std::string>("");
+    if (value == "TASK_UNKNOWN") {
+      return Block::TASK_UNKNOWN;
+    }
+    if (value == "TASK_FREE") {
+      return Block::TASK_FREE;
+    }
+    if (value == "TASK_MOVE") {
+      return Block::TASK_MOVE;
+    }
+    if (value == "TASK_PLACED") {
+      return Block::TASK_PLACED;
+    }
+    if (value == "TASK_REMOVED") {
+      return Block::TASK_REMOVED;
+    }
+    try {
+      return std::stoi(value);
+    } catch (...) {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+bool isKnownPoseStatus(int value)
+{
+  return value == Block::POSE_UNKNOWN ||
+         value == Block::POSE_COARSE ||
+         value == Block::POSE_PRECISE;
+}
+
+bool isKnownTaskStatus(int value)
+{
+  return value == Block::TASK_UNKNOWN ||
+         value == Block::TASK_FREE ||
+         value == Block::TASK_MOVE ||
+         value == Block::TASK_PLACED ||
+         value == Block::TASK_REMOVED;
+}
+
+std::vector<InitialBlockConfig> parseInitialBlocksYaml(
+  rclcpp::Logger logger,
+  const std::string & world_frame,
+  const std::string & yaml_payload)
+{
+  std::vector<InitialBlockConfig> out;
+  if (yaml_payload.empty()) {
+    return out;
+  }
+
+  YAML::Node root;
+  try {
+    root = YAML::Load(yaml_payload);
+  } catch (const std::exception & exc) {
+    RCLCPP_ERROR(logger, "Failed to parse world_model.initial_blocks YAML: %s", exc.what());
+    return out;
+  }
+
+  if (!root || !root.IsSequence()) {
+    RCLCPP_ERROR(logger, "world_model.initial_blocks must be a YAML sequence.");
+    return out;
+  }
+
+  std::unordered_set<std::string> seen_ids;
+  for (std::size_t idx = 0; idx < root.size(); ++idx) {
+    const YAML::Node node = root[idx];
+    if (!node.IsMap()) {
+      RCLCPP_WARN(logger, "Skipping initial block %zu: expected mapping.", idx + 1);
+      continue;
+    }
+
+    InitialBlockConfig block;
+    block.id = node["id"].as<std::string>("");
+    if (block.id.empty()) {
+      RCLCPP_WARN(logger, "Skipping initial block %zu: id must not be empty.", idx + 1);
+      continue;
+    }
+    if (!seen_ids.insert(block.id).second) {
+      RCLCPP_WARN(logger, "Skipping initial block '%s': duplicate id.", block.id.c_str());
+      continue;
+    }
+
+    block.frame_id = node["frame_id"].as<std::string>(world_frame);
+    if (block.frame_id.empty()) {
+      block.frame_id = world_frame;
+    }
+    if (block.frame_id != world_frame) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': frame_id '%s' must match world_frame '%s'.",
+        block.id.c_str(),
+        block.frame_id.c_str(),
+        world_frame.c_str());
+      continue;
+    }
+
+    const YAML::Node position = node["position"];
+    if (!position || !position.IsSequence() || position.size() != 3) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': position must be a 3-element sequence.",
+        block.id.c_str());
+      continue;
+    }
+    try {
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        block.position[axis] = position[axis].as<double>();
+      }
+    } catch (...) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': position values must be numeric.",
+        block.id.c_str());
+      continue;
+    }
+    if (!std::isfinite(block.position[0]) ||
+        !std::isfinite(block.position[1]) ||
+        !std::isfinite(block.position[2])) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': position values must be finite.",
+        block.id.c_str());
+      continue;
+    }
+
+    try {
+      block.yaw_deg = node["yaw_deg"].as<double>(0.0);
+      block.confidence = node["confidence"].as<double>(1.0);
+    } catch (...) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': yaw_deg/confidence must be numeric.",
+        block.id.c_str());
+      continue;
+    }
+    if (!std::isfinite(block.yaw_deg) || !std::isfinite(block.confidence)) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': yaw_deg/confidence must be finite.",
+        block.id.c_str());
+      continue;
+    }
+
+    block.pose_status = parsePoseStatus(node["pose_status"], Block::POSE_COARSE);
+    block.task_status = parseTaskStatus(node["task_status"], Block::TASK_PLACED);
+    if (!isKnownPoseStatus(block.pose_status)) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': unsupported pose_status.",
+        block.id.c_str());
+      continue;
+    }
+    if (!isKnownTaskStatus(block.task_status)) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping initial block '%s': unsupported task_status.",
+        block.id.c_str());
+      continue;
+    }
+
+    out.push_back(block);
+  }
+
+  return out;
+}
+
+}  // namespace
 
 WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
 {
@@ -84,9 +295,12 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<bool>("refine_block.segmentation_input.use_black_background", false);
   cfg.refine_block_blur_kernel_size =
     node.declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
+  cfg.initial_blocks_yaml =
+    node.declare_parameter<std::string>("world_model.initial_blocks", "");
 
   // Keep for launch-file compatibility; no longer used in one-shot flow.
   (void)node.declare_parameter<std::string>("calib_yaml", "");
+  cfg.initial_blocks = parseInitialBlocksYaml(node.get_logger(), cfg.world_frame, cfg.initial_blocks_yaml);
   return cfg;
 }
 
@@ -147,6 +361,9 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   normalize_blur(
     cfg.refine_grasped_blur_kernel_size, "refine_grasped.segmentation_input.blur_kernel_size");
   normalize_blur(cfg.refine_block_blur_kernel_size, "refine_block.segmentation_input.blur_kernel_size");
+  if (!cfg.initial_blocks.empty()) {
+    RCLCPP_INFO(logger, "Configured %zu seeded world-model blocks for startup.", cfg.initial_blocks.size());
+  }
 }
 
 double vectorComponent(
@@ -171,4 +388,3 @@ double vectorComponent(
 }
 
 }  // namespace cbp::world_model
-

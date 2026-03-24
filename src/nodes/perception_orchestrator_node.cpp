@@ -3,6 +3,8 @@
 #include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
 
+#include <tf2/LinearMath/Quaternion.h>
+
 #define WM_LOG(logger, ...) RCLCPP_INFO(logger, __VA_ARGS__)
 
 PerceptionOrchestratorNode::PerceptionOrchestratorNode()
@@ -218,6 +220,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         }
       });
 
+    initializeSeededWorld(startup);
+
     WM_LOG(
       get_logger(),
       "PerceptionOrchestratorNode ready | pipeline_mode=%s | perception_mode=%s",
@@ -257,6 +261,48 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         refine_block_max_depth_m_,
         refine_block_segmentation_timeout_s_);
     }
+}
+
+void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelConfig & startup)
+{
+  if (startup.initial_blocks.empty()) {
+    return;
+  }
+  constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+
+  const auto stamp = now();
+  std_msgs::msg::Header header;
+  header.stamp = stamp;
+  header.frame_id = world_frame_;
+
+  {
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (const auto & cfg_block : startup.initial_blocks) {
+      Block block;
+      block.id = cfg_block.id;
+      block.pose_status = cfg_block.pose_status;
+      block.task_status = cfg_block.task_status;
+      block.pose.position.x = cfg_block.position[0];
+      block.pose.position.y = cfg_block.position[1];
+      block.pose.position.z = cfg_block.position[2];
+      tf2::Quaternion quat;
+      quat.setRPY(0.0, 0.0, cfg_block.yaw_deg * kDegToRad);
+      block.pose.orientation.x = quat.x();
+      block.pose.orientation.y = quat.y();
+      block.pose.orientation.z = quat.z();
+      block.pose.orientation.w = quat.w();
+      block.confidence = static_cast<float>(cfg_block.confidence);
+      block.last_seen = stamp;
+      persistent_world_[block.id] = block;
+      seeded_block_ids_.insert(block.id);
+    }
+  }
+
+  publishPersistentWorld(header);
+  RCLCPP_INFO(
+    get_logger(),
+    "Seeded world model with %zu startup block(s).",
+    startup.initial_blocks.size());
 }
 
 int main(int argc, char ** argv)

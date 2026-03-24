@@ -38,6 +38,12 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
       for (auto it = persistent_world_.begin(); it != persistent_world_.end();) {
         const rclcpp::Time seen(it->second.last_seen);
+        if (seeded_block_ids_.count(it->first) > 0U) {
+          it->second.last_seen = header.stamp;
+          out.blocks.push_back(it->second);
+          ++it;
+          continue;
+        }
         if ((now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s) {
           it = persistent_world_.erase(it);
           continue;
@@ -372,4 +378,3 @@ void PerceptionOrchestratorNode::processFrame(
         handleOneShotSegmentationResponse(seg_future, image, cloud, t_start, run_request);
       });
   }
-

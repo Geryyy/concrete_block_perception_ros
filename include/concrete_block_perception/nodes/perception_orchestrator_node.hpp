@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <cv_bridge/cv_bridge.h>
@@ -37,6 +38,7 @@
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
 #include "concrete_block_perception/srv/set_block_task_status.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
+#include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/world_model/refine_flow.hpp"
 #include "concrete_block_perception/world_model/scene_discovery_flow.hpp"
 #include "concrete_block_perception/world_model/state_manager.hpp"
@@ -213,6 +215,7 @@ private:
     const vision_msgs::msg::Detection2DArray & detections,
     const sensor_msgs::msg::Image & mask_msg);
   void recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms);
+  void initializeSeededWorld(const cbpwm::WorldModelConfig & startup);
   void syncCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud);
@@ -249,6 +252,7 @@ private:
 
   std::unordered_map<std::string, Block> persistent_world_;
   std::mutex persistent_world_mutex_;
+  std::unordered_set<std::string> seeded_block_ids_;
 
   BlockArray latest_world_;
   std::mutex latest_world_mutex_;

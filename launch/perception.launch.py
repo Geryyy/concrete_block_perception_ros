@@ -47,6 +47,18 @@ def generate_launch_description():
         default_value="full",
         description="segment | track | register | full",
     )
+    world_model_overlay_arg = DeclareLaunchArgument(
+        "world_model_overlay_params_file",
+        default_value=PathJoinSubstitution(
+            [pkg_dir, "config", "world_model_seed_none.yaml"]
+        ),
+        description="Optional overlay params file for world_model_node startup seeding",
+    )
+    start_processing_stack_arg = DeclareLaunchArgument(
+        "start_processing_stack",
+        default_value="true",
+        description="Whether to start segmentation/tracking/registration nodes",
+    )
 
     start_world_model_arg = DeclareLaunchArgument(
         "start_world_model",
@@ -93,7 +105,9 @@ def generate_launch_description():
             gpu_arg,
             sim_time_arg,
             mode_arg,
+            world_model_overlay_arg,
             start_world_model_arg,
+            start_processing_stack_arg,
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -106,6 +120,7 @@ def generate_launch_description():
                     }
                 ],
                 arguments=["--ros-args", "--log-level", "WARN"],
+                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             # IncludeLaunchDescription(
             #     PathSubstitution(FindPackageShare("foxglove_bridge"))
@@ -133,6 +148,7 @@ def generate_launch_description():
                     "out:=/zed2i/warped/left/image_rect_color/image_raw",
                 ],
                 output="screen",
+                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             IncludeLaunchDescription(
                 PathSubstitution(FindPackageShare("ros2_yolos_cpp"))
@@ -143,6 +159,7 @@ def generate_launch_description():
                     "labels_path": LaunchConfiguration("labels_path"),
                     "use_gpu": LaunchConfiguration("use_gpu"),
                 }.items(),
+                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             Node(
                 package="concrete_block_perception",
@@ -153,6 +170,7 @@ def generate_launch_description():
                 ],
                 output="screen",
                 emulate_tty=True,
+                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             Node(
                 package="concrete_block_perception",
@@ -166,6 +184,7 @@ def generate_launch_description():
                 ],
                 output="screen",
                 emulate_tty=True,
+                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             Node(
                 package="concrete_block_perception",
@@ -174,6 +193,7 @@ def generate_launch_description():
                 condition=IfCondition(LaunchConfiguration("start_world_model")),
                 parameters=[
                     world_model_params,
+                    LaunchConfiguration("world_model_overlay_params_file"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -9,6 +10,17 @@
 
 namespace cbp::world_model
 {
+
+struct InitialBlockConfig
+{
+  std::string id;
+  std::string frame_id{"world"};
+  std::array<double, 3> position{0.0, 0.0, 0.0};
+  double yaw_deg{0.0};
+  int pose_status{1};
+  int task_status{3};
+  double confidence{1.0};
+};
 
 struct WorldModelConfig
 {
@@ -56,6 +68,8 @@ struct WorldModelConfig
   double refine_block_segmentation_timeout_s{3.0};
   bool refine_block_use_black_bg{false};
   int refine_block_blur_kernel_size{31};
+  std::string initial_blocks_yaml{};
+  std::vector<InitialBlockConfig> initial_blocks;
 };
 
 WorldModelConfig loadWorldModelConfig(rclcpp::Node & node);
@@ -70,4 +84,3 @@ double vectorComponent(
   const char * param_name);
 
 }  // namespace cbp::world_model
-

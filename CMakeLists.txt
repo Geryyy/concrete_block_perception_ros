@@ -172,6 +172,7 @@ target_link_libraries(world_model_node
   ${cpp_typesupport_target}
   Open3D::Open3D
   ${OpenCV_LIBS}
+  yaml-cpp::yaml-cpp
 )
 
 ament_target_dependencies(world_model_node
