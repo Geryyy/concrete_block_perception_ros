@@ -9,6 +9,7 @@ namespace cbp::world_model
 {
 
 using concrete_block_perception::msg::Block;
+using concrete_block_perception::msg::PlanningSceneObject;
 
 std::string normalizeMode(std::string mode)
 {
@@ -220,17 +221,54 @@ bool shouldAssociateByDistance(
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
   const std::vector<Block> & blocks,
-  const std::string & world_frame)
+  const std::vector<PlanningSceneObject> & static_objects,
+  const std::string & world_frame,
+  const std::array<double, 3> & block_dimensions_m)
 {
-  constexpr double kMarkerWidthM = 0.9;
-  constexpr double kMarkerHeightM = 0.6;
-  constexpr double kMarkerDepthM = 0.6;
-
   visualization_msgs::msg::MarkerArray ma;
   auto marker_header = header;
   marker_header.frame_id = world_frame;
 
-  int marker_id = 0;
+  visualization_msgs::msg::Marker clear;
+  clear.header = marker_header;
+  clear.action = visualization_msgs::msg::Marker::DELETEALL;
+  ma.markers.push_back(clear);
+
+  int marker_id = 1;
+  for (const auto & object : static_objects) {
+    visualization_msgs::msg::Marker marker;
+    marker.header = marker_header;
+    marker.ns = "cbp_static_scene";
+    marker.id = marker_id++;
+    marker.type = visualization_msgs::msg::Marker::CUBE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose = object.pose;
+    marker.scale.x = object.dimensions.x;
+    marker.scale.y = object.dimensions.y;
+    marker.scale.z = object.dimensions.z;
+    marker.color.r = 0.2f;
+    marker.color.g = 0.55f;
+    marker.color.b = 0.95f;
+    marker.color.a = 0.28f;
+    ma.markers.push_back(std::move(marker));
+
+    visualization_msgs::msg::Marker label;
+    label.header = marker_header;
+    label.ns = "cbp_static_scene_ids";
+    label.id = marker_id++;
+    label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    label.action = visualization_msgs::msg::Marker::ADD;
+    label.pose = object.pose;
+    label.pose.position.z += 0.5 * object.dimensions.z + 0.2;
+    label.scale.z = 0.18;
+    label.color.r = 0.7f;
+    label.color.g = 0.9f;
+    label.color.b = 1.0f;
+    label.color.a = 0.9f;
+    label.text = object.id;
+    ma.markers.push_back(std::move(label));
+  }
+
   for (const auto & b : blocks) {
     visualization_msgs::msg::Marker m;
     m.header = marker_header;
@@ -241,9 +279,9 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
       visualization_msgs::msg::Marker::CUBE;
     m.action = visualization_msgs::msg::Marker::ADD;
     m.pose = b.pose;
-    m.scale.x = kMarkerWidthM;
-    m.scale.y = kMarkerHeightM;
-    m.scale.z = kMarkerDepthM;
+    m.scale.x = block_dimensions_m[0];
+    m.scale.y = block_dimensions_m[1];
+    m.scale.z = block_dimensions_m[2];
 
     // Pose status takes precedence in marker color so coarse/precise is always visible in RViz.
     if (b.pose_status == Block::POSE_PRECISE) {

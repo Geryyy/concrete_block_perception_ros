@@ -48,9 +48,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetPerceptionMode.srv"
   "srv/SetBlockTaskStatus.srv"
   "srv/GetCoarseBlocks.srv"
+  "srv/GetPlanningScene.srv"
   "srv/RunPoseEstimation.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
+  "msg/PlanningSceneObject.msg"
+  "msg/PlanningScene.msg"
   "msg/TrackedDetection.msg"
   "msg/TrackedDetectionArray.msg"
   DEPENDENCIES

@@ -57,6 +57,36 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_block_segmentation_timeout_s_ = startup.refine_block_segmentation_timeout_s;
     refine_block_use_black_bg_ = startup.refine_block_use_black_bg;
     refine_block_blur_kernel_size_ = startup.refine_block_blur_kernel_size;
+    block_dimensions_m_ = startup.block_dimensions_m;
+
+    constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+    static_scene_objects_.reserve(startup.static_scene_objects.size());
+    for (const auto & cfg_object : startup.static_scene_objects) {
+      PlanningSceneObject object;
+      object.id = cfg_object.id;
+      object.frame_id = world_frame_;
+      object.shape_type = PlanningSceneObject::SHAPE_BOX;
+      object.source_type = PlanningSceneObject::SOURCE_STATIC_OBSTACLE;
+      object.pose.position.x = cfg_object.position[0];
+      object.pose.position.y = cfg_object.position[1];
+      object.pose.position.z = cfg_object.position[2];
+      tf2::Quaternion quat;
+      quat.setRPY(
+        cfg_object.rpy_deg[0] * kDegToRad,
+        cfg_object.rpy_deg[1] * kDegToRad,
+        cfg_object.rpy_deg[2] * kDegToRad);
+      object.pose.orientation.x = quat.x();
+      object.pose.orientation.y = quat.y();
+      object.pose.orientation.z = quat.z();
+      object.pose.orientation.w = quat.w();
+      object.dimensions.x = cfg_object.dimensions[0];
+      object.dimensions.y = cfg_object.dimensions[1];
+      object.dimensions.z = cfg_object.dimensions[2];
+      object.pose_status = Block::POSE_UNKNOWN;
+      object.task_status = Block::TASK_UNKNOWN;
+      object.confidence = 1.0F;
+      static_scene_objects_.push_back(std::move(object));
+    }
 
     if (perf_log_every_n_frames_ < 1) {
       perf_log_every_n_frames_ = 1;
@@ -193,6 +223,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         std::placeholders::_1,
         std::placeholders::_2));
 
+    get_planning_scene_srv_ = create_service<GetPlanningSceneSrv>(
+      "~/get_planning_scene",
+      std::bind(
+        &PerceptionOrchestratorNode::handleGetPlanningScene,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     run_pose_srv_ = create_service<RunPoseSrv>(
       "~/run_pose_estimation",
       std::bind(
@@ -215,7 +253,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {
         const BlockArray snapshot = latestWorldSnapshot();
-        if (!snapshot.blocks.empty()) {
+        if (!snapshot.blocks.empty() || !static_scene_objects_.empty()) {
           publishWorldMarkers(snapshot.header, snapshot.blocks);
         }
       });
@@ -265,7 +303,17 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
 void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelConfig & startup)
 {
+  if (!static_scene_objects_.empty()) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Loaded %zu static planning-scene object(s) into world model.",
+      static_scene_objects_.size());
+  }
   if (startup.initial_blocks.empty()) {
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = world_frame_;
+    publishPersistentWorld(header);
     return;
   }
   constexpr double kDegToRad = 3.14159265358979323846 / 180.0;

@@ -25,6 +25,7 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -33,7 +34,10 @@
 #include "concrete_block_perception/action/register_block.hpp"
 #include "concrete_block_perception/msg/block.hpp"
 #include "concrete_block_perception/msg/block_array.hpp"
+#include "concrete_block_perception/msg/planning_scene.hpp"
+#include "concrete_block_perception/msg/planning_scene_object.hpp"
 #include "concrete_block_perception/srv/get_coarse_blocks.hpp"
+#include "concrete_block_perception/srv/get_planning_scene.hpp"
 #include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
 #include "concrete_block_perception/srv/set_block_task_status.hpp"
@@ -46,6 +50,8 @@
 
 using concrete_block_perception::msg::Block;
 using concrete_block_perception::msg::BlockArray;
+using concrete_block_perception::msg::PlanningScene;
+using concrete_block_perception::msg::PlanningSceneObject;
 
 namespace cbpwm = cbp::world_model;
 
@@ -55,6 +61,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using SetModeSrv = concrete_block_perception::srv::SetPerceptionMode;
   using SetBlockTaskStatusSrv = concrete_block_perception::srv::SetBlockTaskStatus;
   using GetCoarseSrv = concrete_block_perception::srv::GetCoarseBlocks;
+  using GetPlanningSceneSrv = concrete_block_perception::srv::GetPlanningScene;
   using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
   using RegisterBlock = concrete_block_perception::action::RegisterBlock;
@@ -143,6 +150,9 @@ private:
   void resetBusy();
   void updateLatestWorldCache(const BlockArray & out);
   BlockArray latestWorldSnapshot();
+  PlanningScene latestPlanningSceneSnapshot();
+  PlanningScene buildPlanningSceneSnapshot(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
+  std::vector<PlanningSceneObject> staticSceneObjectsInWorld() const;
   bool runRegistrationSync(
     uint32_t detection_id,
     const sensor_msgs::msg::Image & mask,
@@ -204,6 +214,9 @@ private:
   void handleGetCoarseBlocks(
     const std::shared_ptr<GetCoarseSrv::Request> request,
     std::shared_ptr<GetCoarseSrv::Response> response);
+  void handleGetPlanningScene(
+    const std::shared_ptr<GetPlanningSceneSrv::Request> request,
+    std::shared_ptr<GetPlanningSceneSrv::Response> response);
   static bool isKnownTaskStatus(int32_t task_status);
   void handleSetBlockTaskStatus(
     const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
@@ -240,6 +253,7 @@ private:
   rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
+  rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
   rclcpp::CallbackGroup::SharedPtr run_pose_cb_group_;
   rclcpp::CallbackGroup::SharedPtr action_client_cb_group_;
@@ -256,6 +270,8 @@ private:
 
   BlockArray latest_world_;
   std::mutex latest_world_mutex_;
+  PlanningScene latest_planning_scene_;
+  std::mutex latest_planning_scene_mutex_;
 
   std::mutex mode_mutex_;
   cbpwm::PerceptionMode perception_mode_{cbpwm::PerceptionMode::kSceneScan};
@@ -267,6 +283,8 @@ private:
 
   std::string object_class_;
   std::string world_frame_{"world"};
+  std::vector<PlanningSceneObject> static_scene_objects_;
+  std::array<double, 3> block_dimensions_m_{0.6, 0.9, 0.6};
   RuntimeConfig runtime_cfg_;
   bool debug_detection_overlay_enabled_{true};
   bool debug_refine_grasped_roi_input_enabled_{true};

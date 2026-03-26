@@ -127,6 +127,22 @@ void PerceptionOrchestratorNode::handleGetCoarseBlocks(
       response->blocks.header.stamp.nanosec);
   }
 
+void PerceptionOrchestratorNode::handleGetPlanningScene(
+    const std::shared_ptr<GetPlanningSceneSrv::Request> request,
+    std::shared_ptr<GetPlanningSceneSrv::Response> response)
+  {
+    (void)request;
+    response->success = true;
+    response->scene = latestPlanningSceneSnapshot();
+    response->message = "ok";
+    RCLCPP_INFO(
+      get_logger(),
+      "GetPlanningScene -> %zu objects (stamp=%u.%u)",
+      response->scene.objects.size(),
+      response->scene.header.stamp.sec,
+      response->scene.header.stamp.nanosec);
+  }
+
 bool PerceptionOrchestratorNode::isKnownTaskStatus(int32_t task_status)
   {
     return task_status == Block::TASK_UNKNOWN ||

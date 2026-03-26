@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_perception/msg/planning_scene_object.hpp"
 
 namespace cbp::world_model
 {
@@ -69,6 +71,8 @@ bool shouldAssociateByDistance(
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
   const std::vector<concrete_block_perception::msg::Block> & blocks,
-  const std::string & world_frame);
+  const std::vector<concrete_block_perception::msg::PlanningSceneObject> & static_objects,
+  const std::string & world_frame,
+  const std::array<double, 3> & block_dimensions_m);
 
 }  // namespace cbp::world_model

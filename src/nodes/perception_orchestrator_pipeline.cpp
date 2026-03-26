@@ -9,7 +9,9 @@ void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header
   {
     auto marker_header = header;
     marker_header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
-    const auto markers = cbpwm::buildWorldMarkers(marker_header, blocks, world_frame_);
+    const auto static_scene_world = staticSceneObjectsInWorld();
+    const auto markers = cbpwm::buildWorldMarkers(
+      marker_header, blocks, static_scene_world, world_frame_, block_dimensions_m_);
     marker_pub_->publish(markers);
 
     if (!blocks.empty()) {
@@ -18,13 +20,22 @@ void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header
         get_logger(),
         *get_clock(),
         2000,
-        "Published markers: %zu blocks in frame '%s' (first: id=%s pos=[%.3f, %.3f, %.3f])",
+        "Published markers: %zu blocks + %zu static objects in frame '%s' (first block: id=%s pos=[%.3f, %.3f, %.3f])",
         blocks.size(),
+        static_scene_world.size(),
         world_frame_.c_str(),
         b0.id.c_str(),
         b0.pose.position.x,
         b0.pose.position.y,
         b0.pose.position.z);
+    } else if (!static_scene_objects_.empty()) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        2000,
+        "Published markers: 0 blocks + %zu static objects in frame '%s'",
+        static_scene_world.size(),
+        world_frame_.c_str());
     }
   }
 
@@ -55,6 +66,10 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
 
     world_pub_->publish(out);
     updateLatestWorldCache(out);
+    {
+      std::lock_guard<std::mutex> lock(latest_planning_scene_mutex_);
+      latest_planning_scene_ = buildPlanningSceneSnapshot(out.header, out.blocks);
+    }
     publishWorldMarkers(out.header, out.blocks);
   }
 

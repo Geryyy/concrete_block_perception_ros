@@ -214,6 +214,112 @@ std::vector<InitialBlockConfig> parseInitialBlocksYaml(
   return out;
 }
 
+std::vector<StaticSceneObjectConfig> parseStaticSceneObjectsYaml(
+  rclcpp::Logger logger,
+  const std::string & world_frame,
+  const std::string & yaml_payload)
+{
+  std::vector<StaticSceneObjectConfig> out;
+  if (yaml_payload.empty()) {
+    return out;
+  }
+
+  YAML::Node root;
+  try {
+    root = YAML::Load(yaml_payload);
+  } catch (const std::exception & exc) {
+    RCLCPP_ERROR(logger, "Failed to parse world_model.static_scene_objects YAML: %s", exc.what());
+    return out;
+  }
+
+  if (!root || !root.IsSequence()) {
+    RCLCPP_ERROR(logger, "world_model.static_scene_objects must be a YAML sequence.");
+    return out;
+  }
+
+  std::unordered_set<std::string> seen_ids;
+  for (std::size_t idx = 0; idx < root.size(); ++idx) {
+    const YAML::Node node = root[idx];
+    if (!node.IsMap()) {
+      RCLCPP_WARN(logger, "Skipping static scene object %zu: expected mapping.", idx + 1);
+      continue;
+    }
+
+    StaticSceneObjectConfig object;
+    object.id = node["id"].as<std::string>("");
+    if (object.id.empty()) {
+      RCLCPP_WARN(logger, "Skipping static scene object %zu: id must not be empty.", idx + 1);
+      continue;
+    }
+    if (!seen_ids.insert(object.id).second) {
+      RCLCPP_WARN(logger, "Skipping static scene object '%s': duplicate id.", object.id.c_str());
+      continue;
+    }
+
+    object.frame_id = node["frame_id"].as<std::string>(world_frame);
+    if (object.frame_id.empty()) {
+      object.frame_id = world_frame;
+    }
+    const YAML::Node position = node["position"];
+    const YAML::Node dimensions = node["dimensions"];
+    if (!position || !position.IsSequence() || position.size() != 3) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping static scene object '%s': position must be a 3-element sequence.",
+        object.id.c_str());
+      continue;
+    }
+    if (!dimensions || !dimensions.IsSequence() || dimensions.size() != 3) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping static scene object '%s': dimensions must be a 3-element sequence.",
+        object.id.c_str());
+      continue;
+    }
+
+    try {
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        object.position[axis] = position[axis].as<double>();
+        object.dimensions[axis] = dimensions[axis].as<double>();
+      }
+      const YAML::Node rpy_deg = node["rpy_deg"];
+      if (rpy_deg && rpy_deg.IsSequence() && rpy_deg.size() == 3) {
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+          object.rpy_deg[axis] = rpy_deg[axis].as<double>();
+        }
+      }
+    } catch (...) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping static scene object '%s': position/dimensions/rpy_deg must be numeric.",
+        object.id.c_str());
+      continue;
+    }
+
+    bool finite = true;
+    for (double value : object.position) {
+      finite = finite && std::isfinite(value);
+    }
+    for (double value : object.dimensions) {
+      finite = finite && std::isfinite(value) && value > 0.0;
+    }
+    for (double value : object.rpy_deg) {
+      finite = finite && std::isfinite(value);
+    }
+    if (!finite) {
+      RCLCPP_WARN(
+        logger,
+        "Skipping static scene object '%s': values must be finite and dimensions > 0.",
+        object.id.c_str());
+      continue;
+    }
+
+    out.push_back(object);
+  }
+
+  return out;
+}
+
 }  // namespace
 
 WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
@@ -297,10 +403,19 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
   cfg.initial_blocks_yaml =
     node.declare_parameter<std::string>("world_model.initial_blocks", "");
+  cfg.static_scene_objects_yaml =
+    node.declare_parameter<std::string>("world_model.static_scene_objects", "");
+  const auto block_dimensions =
+    node.declare_parameter<std::vector<double>>("world_model.block_dimensions_m", {0.6, 0.9, 0.6});
+  for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size() && idx < block_dimensions.size(); ++idx) {
+    cfg.block_dimensions_m[idx] = block_dimensions[idx];
+  }
 
   // Keep for launch-file compatibility; no longer used in one-shot flow.
   (void)node.declare_parameter<std::string>("calib_yaml", "");
   cfg.initial_blocks = parseInitialBlocksYaml(node.get_logger(), cfg.world_frame, cfg.initial_blocks_yaml);
+  cfg.static_scene_objects = parseStaticSceneObjectsYaml(
+    node.get_logger(), cfg.world_frame, cfg.static_scene_objects_yaml);
   return cfg;
 }
 
@@ -361,8 +476,23 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   normalize_blur(
     cfg.refine_grasped_blur_kernel_size, "refine_grasped.segmentation_input.blur_kernel_size");
   normalize_blur(cfg.refine_block_blur_kernel_size, "refine_block.segmentation_input.blur_kernel_size");
+  for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size(); ++idx) {
+    if (!std::isfinite(cfg.block_dimensions_m[idx]) || cfg.block_dimensions_m[idx] <= 0.0) {
+      RCLCPP_WARN(
+        logger,
+        "Invalid world_model.block_dimensions_m[%zu]=%.3f, resetting to 0.6",
+        idx,
+        cfg.block_dimensions_m[idx]);
+      cfg.block_dimensions_m[idx] = 0.6;
+    }
+  }
   if (!cfg.initial_blocks.empty()) {
     RCLCPP_INFO(logger, "Configured %zu seeded world-model blocks for startup.", cfg.initial_blocks.size());
+  }
+  if (!cfg.static_scene_objects.empty()) {
+    RCLCPP_INFO(
+      logger, "Configured %zu static planning-scene objects for startup.",
+      cfg.static_scene_objects.size());
   }
 }
 

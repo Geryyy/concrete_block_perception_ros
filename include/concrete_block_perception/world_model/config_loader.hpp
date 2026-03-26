@@ -22,6 +22,15 @@ struct InitialBlockConfig
   double confidence{1.0};
 };
 
+struct StaticSceneObjectConfig
+{
+  std::string id;
+  std::string frame_id{"world"};
+  std::array<double, 3> position{0.0, 0.0, 0.0};
+  std::array<double, 3> rpy_deg{0.0, 0.0, 0.0};
+  std::array<double, 3> dimensions{1.0, 1.0, 1.0};
+};
+
 struct WorldModelConfig
 {
   std::string pipeline_mode_str{"full"};
@@ -70,6 +79,9 @@ struct WorldModelConfig
   int refine_block_blur_kernel_size{31};
   std::string initial_blocks_yaml{};
   std::vector<InitialBlockConfig> initial_blocks;
+  std::string static_scene_objects_yaml{};
+  std::vector<StaticSceneObjectConfig> static_scene_objects;
+  std::array<double, 3> block_dimensions_m{0.6, 0.9, 0.6};
 };
 
 WorldModelConfig loadWorldModelConfig(rclcpp::Node & node);

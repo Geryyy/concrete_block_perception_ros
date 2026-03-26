@@ -3,6 +3,21 @@
 #include "concrete_block_perception/utils/coarse_pose_utils.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+
+namespace
+{
+
+geometry_msgs::msg::Vector3 toVector3(const std::array<double, 3> & values)
+{
+  geometry_msgs::msg::Vector3 out;
+  out.x = values[0];
+  out.y = values[1];
+  out.z = values[2];
+  return out;
+}
+
+}  // namespace
 
 void PerceptionOrchestratorNode::resetPerfCounters()
   {
@@ -70,6 +85,86 @@ BlockArray PerceptionOrchestratorNode::latestWorldSnapshot()
   {
     std::lock_guard<std::mutex> lock(latest_world_mutex_);
     return latest_world_;
+  }
+
+PlanningScene PerceptionOrchestratorNode::latestPlanningSceneSnapshot()
+  {
+    std::lock_guard<std::mutex> lock(latest_planning_scene_mutex_);
+    return latest_planning_scene_;
+  }
+
+std::vector<PlanningSceneObject> PerceptionOrchestratorNode::staticSceneObjectsInWorld() const
+  {
+    std::vector<PlanningSceneObject> out;
+    out.reserve(static_scene_objects_.size());
+
+    for (const auto & object : static_scene_objects_) {
+      PlanningSceneObject world_object = object;
+      world_object.frame_id = world_frame_;
+
+      if (!tf_buffer_ || object.frame_id.empty() || object.frame_id == world_frame_) {
+        out.push_back(std::move(world_object));
+        continue;
+      }
+
+      geometry_msgs::msg::PoseStamped src_pose;
+      src_pose.header.frame_id = object.frame_id;
+      src_pose.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+      src_pose.pose = object.pose;
+
+      try {
+        const auto tf = tf_buffer_->lookupTransform(
+          world_frame_,
+          object.frame_id,
+          tf2::TimePointZero,
+          tf2::durationFromSec(0.2));
+        geometry_msgs::msg::PoseStamped dst_pose;
+        tf2::doTransform(src_pose, dst_pose, tf);
+        world_object.pose = dst_pose.pose;
+      } catch (const tf2::TransformException & ex) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Could not transform static scene object '%s' from %s to %s: %s",
+          object.id.c_str(),
+          object.frame_id.c_str(),
+          world_frame_.c_str(),
+          ex.what());
+      }
+
+      out.push_back(std::move(world_object));
+    }
+
+    return out;
+  }
+
+PlanningScene PerceptionOrchestratorNode::buildPlanningSceneSnapshot(
+    const std_msgs::msg::Header & header,
+    const std::vector<Block> & blocks)
+  {
+    PlanningScene scene;
+    scene.header = header;
+    scene.header.frame_id = world_frame_;
+
+    const auto static_scene_world = staticSceneObjectsInWorld();
+    scene.objects.reserve(static_scene_world.size() + blocks.size());
+    for (const auto & object : static_scene_world) {
+      scene.objects.push_back(object);
+    }
+
+    for (const auto & block : blocks) {
+      PlanningSceneObject object;
+      object.id = block.id;
+      object.frame_id = world_frame_;
+      object.shape_type = PlanningSceneObject::SHAPE_BOX;
+      object.source_type = PlanningSceneObject::SOURCE_BLOCK;
+      object.pose = block.pose;
+      object.dimensions = toVector3(block_dimensions_m_);
+      object.pose_status = block.pose_status;
+      object.task_status = block.task_status;
+      object.confidence = block.confidence;
+      scene.objects.push_back(std::move(object));
+    }
+    return scene;
   }
 
 void PerceptionOrchestratorNode::recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms)
