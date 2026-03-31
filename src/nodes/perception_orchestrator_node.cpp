@@ -249,6 +249,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         std::placeholders::_1,
         std::placeholders::_2));
 
+    upsert_block_srv_ = create_service<UpsertBlockSrv>(
+      "~/upsert_block",
+      std::bind(
+        &PerceptionOrchestratorNode::handleUpsertBlock,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     marker_refresh_timer_ = create_wall_timer(
       std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {

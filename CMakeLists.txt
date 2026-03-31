@@ -50,6 +50,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetCoarseBlocks.srv"
   "srv/GetPlanningScene.srv"
   "srv/RunPoseEstimation.srv"
+  "srv/UpsertBlock.srv"
   "msg/Block.msg"
   "msg/BlockArray.msg"
   "msg/PlanningSceneObject.msg"

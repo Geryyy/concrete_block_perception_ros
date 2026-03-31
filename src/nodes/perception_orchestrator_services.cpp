@@ -223,3 +223,52 @@ void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
       cbpwm::taskStatusToString(prev_task_status),
       cbpwm::taskStatusToString(target_task_status));
   }
+
+void PerceptionOrchestratorNode::handleUpsertBlock(
+    const std::shared_ptr<UpsertBlockSrv::Request> request,
+    std::shared_ptr<UpsertBlockSrv::Response> response)
+  {
+    if (request->block_id.empty()) {
+      response->success = false;
+      response->message = "block_id must not be empty.";
+      return;
+    }
+    if (!request->frame_id.empty() && request->frame_id != world_frame_) {
+      response->success = false;
+      response->message =
+        "frame_id '" + request->frame_id + "' != world_frame '" + world_frame_ + "'";
+      RCLCPP_WARN(get_logger(), "UpsertBlock rejected: %s", response->message.c_str());
+      return;
+    }
+
+    Block block;
+    block.id = request->block_id;
+    block.pose = request->pose;
+    block.pose_status = request->pose_status;
+    block.task_status = request->task_status;
+    block.confidence = request->confidence;
+    block.last_seen = now();
+
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      persistent_world_[block.id] = block;
+      seeded_block_ids_.insert(block.id);
+    }
+
+    // Update the cached snapshot so markers and queries reflect the change
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = world_frame_;
+    publishPersistentWorld(header);
+
+    response->success = true;
+    response->message = "OK";
+    RCLCPP_INFO(
+      get_logger(),
+      "UpsertBlock: '%s' at (%.2f, %.2f, %.2f) in '%s'",
+      block.id.c_str(),
+      block.pose.position.x,
+      block.pose.position.y,
+      block.pose.position.z,
+      world_frame_.c_str());
+  }

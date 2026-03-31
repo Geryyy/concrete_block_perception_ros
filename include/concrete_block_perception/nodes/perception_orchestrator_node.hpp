@@ -42,6 +42,7 @@
 #include "concrete_block_perception/srv/run_pose_estimation.hpp"
 #include "concrete_block_perception/srv/set_block_task_status.hpp"
 #include "concrete_block_perception/srv/set_perception_mode.hpp"
+#include "concrete_block_perception/srv/upsert_block.hpp"
 #include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/world_model/refine_flow.hpp"
 #include "concrete_block_perception/world_model/scene_discovery_flow.hpp"
@@ -64,6 +65,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using GetPlanningSceneSrv = concrete_block_perception::srv::GetPlanningScene;
   using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
+  using UpsertBlockSrv = concrete_block_perception::srv::UpsertBlock;
   using RegisterBlock = concrete_block_perception::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 
@@ -221,6 +223,9 @@ private:
   void handleSetBlockTaskStatus(
     const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
     std::shared_ptr<SetBlockTaskStatusSrv::Response> response);
+  void handleUpsertBlock(
+    const std::shared_ptr<UpsertBlockSrv::Request> request,
+    std::shared_ptr<UpsertBlockSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
   void publishDetectionOverlay(
@@ -252,6 +257,7 @@ private:
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
+  rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;

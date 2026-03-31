@@ -1,0 +1,22 @@
+# Two blocks for pick-and-place testing.
+# Positions in K0_mounting_base frame (planning reference frame).
+# Block dimensions: 0.6 x 0.9 x 0.6 m  →  z = 0.3 puts center on ground.
+world_model_node:
+  ros__parameters:
+    world_frame: K0_mounting_base
+    world_model:
+      initial_blocks: |
+        - id: block_1
+          frame_id: K0_mounting_base
+          position: [5.0, 2.0, -0.84]
+          yaw_deg: 0.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
+          confidence: 1.0
+        - id: block_2
+          frame_id: K0_mounting_base
+          position: [5.0, -2.0, -0.84]
+          yaw_deg: 0.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
+          confidence: 1.0
