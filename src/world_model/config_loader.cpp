@@ -164,8 +164,9 @@ std::vector<InitialBlockConfig> parseInitialBlocksYaml(
       continue;
     }
     if (!std::isfinite(block.position[0]) ||
-        !std::isfinite(block.position[1]) ||
-        !std::isfinite(block.position[2])) {
+      !std::isfinite(block.position[1]) ||
+      !std::isfinite(block.position[2]))
+    {
       RCLCPP_WARN(
         logger,
         "Skipping initial block '%s': position values must be finite.",
@@ -336,8 +337,12 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.object_timeout_s = node.declare_parameter<double>("world_model.object_timeout_s", 10.0);
   cfg.association_max_distance_m =
     node.declare_parameter<double>("world_model.association_max_distance_m", 0.45);
-  cfg.association_max_age_s = node.declare_parameter<double>("world_model.association_max_age_s", 20.0);
-  cfg.min_update_confidence = node.declare_parameter<double>("world_model.min_update_confidence", 0.25);
+  cfg.association_max_age_s = node.declare_parameter<double>(
+    "world_model.association_max_age_s",
+    20.0);
+  cfg.min_update_confidence = node.declare_parameter<double>(
+    "world_model.min_update_confidence",
+    0.25);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
   cfg.scene_discovery_coarse_fallback_enabled =
@@ -350,12 +355,14 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
   cfg.coarse_front_center_offset_rect_m = node.declare_parameter<double>(
     "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
-  cfg.debug_detection_overlay_enabled = node.declare_parameter<bool>("debug.publish_detection_overlay", true);
+  cfg.debug_detection_overlay_enabled = node.declare_parameter<bool>(
+    "debug.publish_detection_overlay", true);
   cfg.debug_refine_grasped_roi_input_enabled =
     node.declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
   cfg.perf_log_timing_enabled = node.declare_parameter<bool>("perf.log_timing", true);
-  cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 20);
-  cfg.marker_refresh_period_s = node.declare_parameter<double>("world_model.marker_refresh_period_s", 0.5);
+  cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 100);
+  cfg.marker_refresh_period_s = node.declare_parameter<double>(
+    "world_model.marker_refresh_period_s", 0.5);
 
   cfg.refine_grasped_use_fk_roi = node.declare_parameter<bool>("refine_grasped.use_fk_roi", true);
   cfg.refine_grasped_tcp_frame =
@@ -364,8 +371,10 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<std::string>("refine_grasped.camera_frame", "");
   cfg.refine_grasped_camera_info_topic = node.declare_parameter<std::string>(
     "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
-  cfg.refine_grasped_min_depth_m = node.declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
-  cfg.refine_grasped_max_depth_m = node.declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
+  cfg.refine_grasped_min_depth_m =
+    node.declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
+  cfg.refine_grasped_max_depth_m =
+    node.declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
   cfg.refine_grasped_segmentation_timeout_s =
     node.declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
   cfg.refine_grasped_use_black_bg =
@@ -407,13 +416,16 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<std::string>("world_model.static_scene_objects", "");
   const auto block_dimensions =
     node.declare_parameter<std::vector<double>>("world_model.block_dimensions_m", {0.6, 0.9, 0.6});
-  for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size() && idx < block_dimensions.size(); ++idx) {
+  for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size() && idx < block_dimensions.size();
+    ++idx)
+  {
     cfg.block_dimensions_m[idx] = block_dimensions[idx];
   }
 
   // Keep for launch-file compatibility; no longer used in one-shot flow.
   (void)node.declare_parameter<std::string>("calib_yaml", "");
-  cfg.initial_blocks = parseInitialBlocksYaml(node.get_logger(), cfg.world_frame, cfg.initial_blocks_yaml);
+  cfg.initial_blocks = parseInitialBlocksYaml(
+    node.get_logger(), cfg.world_frame, cfg.initial_blocks_yaml);
   cfg.static_scene_objects = parseStaticSceneObjectsYaml(
     node.get_logger(), cfg.world_frame, cfg.static_scene_objects_yaml);
   return cfg;
@@ -433,7 +445,9 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
         kernel = 1;
       }
       if ((kernel % 2) == 0) {
-        RCLCPP_WARN(logger, "Invalid %s=%d (must be odd), incrementing to %d", name, kernel, kernel + 1);
+        RCLCPP_WARN(
+          logger, "Invalid %s=%d (must be odd), incrementing to %d", name, kernel,
+          kernel + 1);
         kernel += 1;
       }
     };
@@ -475,7 +489,9 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   }
   normalize_blur(
     cfg.refine_grasped_blur_kernel_size, "refine_grasped.segmentation_input.blur_kernel_size");
-  normalize_blur(cfg.refine_block_blur_kernel_size, "refine_block.segmentation_input.blur_kernel_size");
+  normalize_blur(
+    cfg.refine_block_blur_kernel_size,
+    "refine_block.segmentation_input.blur_kernel_size");
   for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size(); ++idx) {
     if (!std::isfinite(cfg.block_dimensions_m[idx]) || cfg.block_dimensions_m[idx] <= 0.0) {
       RCLCPP_WARN(
@@ -487,7 +503,9 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     }
   }
   if (!cfg.initial_blocks.empty()) {
-    RCLCPP_INFO(logger, "Configured %zu seeded world-model blocks for startup.", cfg.initial_blocks.size());
+    RCLCPP_INFO(
+      logger, "Configured %zu seeded world-model blocks for startup.",
+      cfg.initial_blocks.size());
   }
   if (!cfg.static_scene_objects.empty()) {
     RCLCPP_INFO(
