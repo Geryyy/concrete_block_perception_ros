@@ -14,28 +14,27 @@ void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header
       marker_header, blocks, static_scene_world, world_frame_, block_dimensions_m_);
     marker_pub_->publish(markers);
 
-    if (!blocks.empty()) {
-      const auto & b0 = blocks.front();
-      RCLCPP_INFO_THROTTLE(
-        get_logger(),
-        *get_clock(),
-        2000,
-        "Published markers: %zu blocks + %zu static objects in frame '%s' (first block: id=%s pos=[%.3f, %.3f, %.3f])",
-        blocks.size(),
-        static_scene_world.size(),
-        world_frame_.c_str(),
-        b0.id.c_str(),
-        b0.pose.position.x,
-        b0.pose.position.y,
-        b0.pose.position.z);
-    } else if (!static_scene_objects_.empty()) {
-      RCLCPP_INFO_THROTTLE(
-        get_logger(),
-        *get_clock(),
-        2000,
-        "Published markers: 0 blocks + %zu static objects in frame '%s'",
-        static_scene_world.size(),
-        world_frame_.c_str());
+    if (blocks.size() != last_published_block_count_) {
+      last_published_block_count_ = blocks.size();
+      if (!blocks.empty()) {
+        const auto & b0 = blocks.front();
+        RCLCPP_INFO(
+          get_logger(),
+          "Published markers: %zu blocks + %zu static objects in frame '%s' (first block: id=%s pos=[%.3f, %.3f, %.3f])",
+          blocks.size(),
+          static_scene_world.size(),
+          world_frame_.c_str(),
+          b0.id.c_str(),
+          b0.pose.position.x,
+          b0.pose.position.y,
+          b0.pose.position.z);
+      } else if (!static_scene_objects_.empty()) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Published markers: 0 blocks + %zu static objects in frame '%s'",
+          static_scene_world.size(),
+          world_frame_.c_str());
+      }
     }
   }
 

@@ -15,7 +15,7 @@ world_model_node:
           confidence: 1.0
         - id: block_2
           frame_id: K0_mounting_base
-          position: [5.0, -2.0, -0.84]
+          position: [6.5, 2.0, -0.84]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
