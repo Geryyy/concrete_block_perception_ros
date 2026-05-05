@@ -1,8 +1,8 @@
 #pragma once
 
 #include <geometry_msgs/msg/pose.hpp>
-#include "concrete_block_perception/msg/block.hpp"
-#include "concrete_block_perception/msg/block_array.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block_array.hpp"
 
 std::string poseStatusToString(int status);
 std::string taskStatusToString(int status);

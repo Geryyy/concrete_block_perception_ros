@@ -7,8 +7,8 @@
 #include <std_msgs/msg/header.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include "concrete_block_perception/msg/block.hpp"
-#include "concrete_block_perception/msg/planning_scene_object.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
 
 namespace cbp::world_model
 {
@@ -70,8 +70,8 @@ bool shouldAssociateByDistance(
 
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
-  const std::vector<concrete_block_perception::msg::Block> & blocks,
-  const std::vector<concrete_block_perception::msg::PlanningSceneObject> & static_objects,
+  const std::vector<concrete_block_world_model_interfaces::msg::Block> & blocks,
+  const std::vector<concrete_block_world_model_interfaces::msg::PlanningSceneObject> & static_objects,
   const std::string & world_frame,
   const std::array<double, 3> & block_dimensions_m);
 

@@ -1,7 +1,0 @@
-bool force_refresh
-float32 timeout_s
-builtin_interfaces/Time query_stamp
----
-bool success
-concrete_block_perception/PlanningScene scene
-string message

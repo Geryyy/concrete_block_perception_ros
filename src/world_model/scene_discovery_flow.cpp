@@ -17,13 +17,13 @@ void processRegistrationCandidates(
     !request.target_block_id.empty() &&
     request.target_block_id.rfind("block_", 0) != 0;
 
-  concrete_block_perception::msg::Block expected_target;
+  concrete_block_world_model_interfaces::msg::Block expected_target;
   const bool have_expected_target =
     targeted_refine && rt.get_expected_target &&
     rt.get_expected_target(request.target_block_id, expected_target);
 
   if (have_expected_target) {
-    concrete_block_perception::msg::Block best_block;
+    concrete_block_world_model_interfaces::msg::Block best_block;
     double best_dist = std::numeric_limits<double>::infinity();
     const bool best_found = selectBestCandidateByExpectedPose(
       candidates,
@@ -32,7 +32,7 @@ void processRegistrationCandidates(
       [&rt, &cloud, &request](
         uint32_t detection_id,
         const sensor_msgs::msg::Image & mask,
-        concrete_block_perception::msg::Block & out_block,
+        concrete_block_world_model_interfaces::msg::Block & out_block,
         std::string & out_reason) {
         return rt.run_registration(
           detection_id,
@@ -77,7 +77,7 @@ void processRegistrationCandidates(
   }
 
   for (const auto & candidate : candidates) {
-    concrete_block_perception::msg::Block block;
+    concrete_block_world_model_interfaces::msg::Block block;
     std::string reason;
     const bool ok = rt.run_registration(
       candidate.first,

@@ -11,7 +11,7 @@
 namespace cbp::world_model
 {
 
-using Block = concrete_block_perception::msg::Block;
+using Block = concrete_block_world_model_interfaces::msg::Block;
 
 namespace
 {

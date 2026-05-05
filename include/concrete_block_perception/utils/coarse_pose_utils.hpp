@@ -7,7 +7,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
-#include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
 
 namespace cbp::world_model
 {
@@ -33,14 +33,14 @@ bool buildCoarseBlockFromOrganizedCloud(
   const CoarsePoseInput & in,
   const sensor_msgs::msg::PointCloud2 & cloud_msg,
   const CoarsePoseConfig & cfg,
-  concrete_block_perception::msg::Block & out_block,
+  concrete_block_world_model_interfaces::msg::Block & out_block,
   std::string & reason);
 
 bool buildCoarseBlockFromCutoutCloud(
   const CoarsePoseInput & in,
   const sensor_msgs::msg::PointCloud2 & cutout_cloud_msg,
   const CoarsePoseConfig & cfg,
-  concrete_block_perception::msg::Block & out_block,
+  concrete_block_world_model_interfaces::msg::Block & out_block,
   std::string & reason);
 
 }  // namespace cbp::world_model

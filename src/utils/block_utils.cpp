@@ -2,8 +2,8 @@
 #include "concrete_block_perception/utils/block_utils.hpp"
 
 
-using Block = concrete_block_perception::msg::Block;
-using BlockArray = concrete_block_perception::msg::BlockArray;
+using Block = concrete_block_world_model_interfaces::msg::Block;
+using BlockArray = concrete_block_world_model_interfaces::msg::BlockArray;
 
 std::string poseStatusToString(int status)
 {

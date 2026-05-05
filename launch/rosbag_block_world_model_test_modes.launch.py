@@ -27,7 +27,7 @@ def _one_shot_pose_estimation_call(
                     "-lc",
                     (
                         "ros2 service call /world_model_node/run_pose_estimation "
-                        "concrete_block_perception/srv/RunPoseEstimation "
+                        "concrete_block_world_model_interfaces/srv/RunPoseEstimation "
                         f"\"{{mode: {mode}, target_block_id: '$CBP_TARGET_BLOCK_ID', "
                         'enable_debug: true, timeout_s: 8.0}"'
                     ),
@@ -57,7 +57,7 @@ def _set_block_task_status_call(
                     "-lc",
                     (
                         "ros2 service call /world_model_node/set_block_task_status "
-                        "concrete_block_perception/srv/SetBlockTaskStatus "
+                        "concrete_block_world_model_interfaces/srv/SetBlockTaskStatus "
                         "\"{block_id: '$CBP_TASK_BLOCK_ID', task_status: $CBP_TASK_STATUS}\""
                     ),
                 ],

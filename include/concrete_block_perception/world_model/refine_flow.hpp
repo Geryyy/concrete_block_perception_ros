@@ -10,7 +10,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
-#include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include "concrete_block_perception/world_model/roi_processing.hpp"
 
 namespace cbp::world_model
@@ -61,7 +61,7 @@ struct RefineFlowRuntime
 
   std::function<void(const sensor_msgs::msg::Image &)> publish_debug_overlay;
   std::function<void(const sensor_msgs::msg::Image &)> publish_roi_input;
-  std::function<bool(const std::string &, concrete_block_perception::msg::Block &)> get_expected_target;
+  std::function<bool(const std::string &, concrete_block_world_model_interfaces::msg::Block &)> get_expected_target;
   std::function<bool(ProjectionIntrinsics &)> get_projection_intrinsics;
 
   std::function<bool(
@@ -88,12 +88,12 @@ struct RefineFlowRuntime
       const sensor_msgs::msg::PointCloud2 &,
       const std_msgs::msg::Header &,
       double,
-      concrete_block_perception::msg::Block &,
+      concrete_block_world_model_interfaces::msg::Block &,
       std::string &,
       const std::string &)> run_registration_sync;
 
   std::function<bool(
-      concrete_block_perception::msg::Block &,
+      concrete_block_world_model_interfaces::msg::Block &,
       std::string &,
       std::string &)> upsert_block;
 };

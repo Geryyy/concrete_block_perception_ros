@@ -32,40 +32,40 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "concrete_block_perception/action/register_block.hpp"
-#include "concrete_block_perception/msg/block.hpp"
-#include "concrete_block_perception/msg/block_array.hpp"
-#include "concrete_block_perception/msg/planning_scene.hpp"
-#include "concrete_block_perception/msg/planning_scene_object.hpp"
-#include "concrete_block_perception/srv/get_coarse_blocks.hpp"
-#include "concrete_block_perception/srv/get_planning_scene.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block_array.hpp"
+#include "concrete_block_world_model_interfaces/msg/planning_scene.hpp"
+#include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
+#include "concrete_block_world_model_interfaces/srv/get_coarse_blocks.hpp"
+#include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
 #include "concrete_block_perception/srv/register_block.hpp"
-#include "concrete_block_perception/srv/run_pose_estimation.hpp"
-#include "concrete_block_perception/srv/set_block_task_status.hpp"
-#include "concrete_block_perception/srv/set_perception_mode.hpp"
-#include "concrete_block_perception/srv/upsert_block.hpp"
+#include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
+#include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
+#include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
+#include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/world_model/refine_flow.hpp"
 #include "concrete_block_perception/world_model/scene_discovery_flow.hpp"
 #include "concrete_block_perception/world_model/state_manager.hpp"
 #include "ros2_yolos_cpp/srv/segment_image.hpp"
 
-using concrete_block_perception::msg::Block;
-using concrete_block_perception::msg::BlockArray;
-using concrete_block_perception::msg::PlanningScene;
-using concrete_block_perception::msg::PlanningSceneObject;
+using concrete_block_world_model_interfaces::msg::Block;
+using concrete_block_world_model_interfaces::msg::BlockArray;
+using concrete_block_world_model_interfaces::msg::PlanningScene;
+using concrete_block_world_model_interfaces::msg::PlanningSceneObject;
 
 namespace cbpwm = cbp::world_model;
 
 class PerceptionOrchestratorNode : public rclcpp::Node
 {
   using SegmentSrv = ros2_yolos_cpp::srv::SegmentImage;
-  using SetModeSrv = concrete_block_perception::srv::SetPerceptionMode;
-  using SetBlockTaskStatusSrv = concrete_block_perception::srv::SetBlockTaskStatus;
-  using GetCoarseSrv = concrete_block_perception::srv::GetCoarseBlocks;
-  using GetPlanningSceneSrv = concrete_block_perception::srv::GetPlanningScene;
+  using SetModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
+  using SetBlockTaskStatusSrv = concrete_block_world_model_interfaces::srv::SetBlockTaskStatus;
+  using GetCoarseSrv = concrete_block_world_model_interfaces::srv::GetCoarseBlocks;
+  using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
   using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
-  using RunPoseSrv = concrete_block_perception::srv::RunPoseEstimation;
-  using UpsertBlockSrv = concrete_block_perception::srv::UpsertBlock;
+  using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
+  using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
   using RegisterBlock = concrete_block_perception::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 

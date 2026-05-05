@@ -17,8 +17,8 @@ std::string nextWorldBlockId(uint64_t & world_block_counter)
 }  // namespace
 
 double blockDistance(
-  const concrete_block_perception::msg::Block & a,
-  const concrete_block_perception::msg::Block & b)
+  const concrete_block_world_model_interfaces::msg::Block & a,
+  const concrete_block_world_model_interfaces::msg::Block & b)
 {
   const double dx = a.pose.position.x - b.pose.position.x;
   const double dy = a.pose.position.y - b.pose.position.y;
@@ -27,13 +27,13 @@ double blockDistance(
 }
 
 std::string resolveGraspedBlockId(
-  const std::unordered_map<std::string, concrete_block_perception::msg::Block> & persistent_world,
+  const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   const rclcpp::Clock & clock)
 {
   rclcpp::Time newest_time(0, 0, clock.get_clock_type());
   std::string best_id;
   for (const auto & kv : persistent_world) {
-    if (kv.second.task_status != concrete_block_perception::msg::Block::TASK_MOVE) {
+    if (kv.second.task_status != concrete_block_world_model_interfaces::msg::Block::TASK_MOVE) {
       continue;
     }
     const rclcpp::Time seen(kv.second.last_seen, clock.get_clock_type());
@@ -46,9 +46,9 @@ std::string resolveGraspedBlockId(
 }
 
 bool upsertRegisteredBlock(
-  std::unordered_map<std::string, concrete_block_perception::msg::Block> & persistent_world,
+  std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
-  concrete_block_perception::msg::Block incoming,
+  concrete_block_world_model_interfaces::msg::Block incoming,
   OneShotMode run_mode,
   const std::string & target_block_id,
   const std_msgs::msg::Header & header,
@@ -70,7 +70,7 @@ bool upsertRegisteredBlock(
     forced_id = target_block_id;
   }
 
-  const concrete_block_perception::msg::Block * best_match = nullptr;
+  const concrete_block_world_model_interfaces::msg::Block * best_match = nullptr;
   double best_dist = std::numeric_limits<double>::infinity();
   std::string best_id;
 
@@ -121,16 +121,16 @@ bool upsertRegisteredBlock(
       return false;
     }
 
-    if (previous.task_status != concrete_block_perception::msg::Block::TASK_UNKNOWN) {
+    if (previous.task_status != concrete_block_world_model_interfaces::msg::Block::TASK_UNKNOWN) {
       incoming.task_status = previous.task_status;
     }
   } else {
-    incoming.task_status = concrete_block_perception::msg::Block::TASK_FREE;
+    incoming.task_status = concrete_block_world_model_interfaces::msg::Block::TASK_FREE;
   }
 
   incoming.id = assigned_id;
-  if (incoming.pose_status == concrete_block_perception::msg::Block::POSE_UNKNOWN) {
-    incoming.pose_status = concrete_block_perception::msg::Block::POSE_PRECISE;
+  if (incoming.pose_status == concrete_block_world_model_interfaces::msg::Block::POSE_UNKNOWN) {
+    incoming.pose_status = concrete_block_world_model_interfaces::msg::Block::POSE_PRECISE;
   }
   persistent_world[assigned_id] = incoming;
   return true;

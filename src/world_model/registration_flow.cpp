@@ -50,19 +50,19 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
 
 bool selectBestCandidateByExpectedPose(
   const std::vector<DetectionCandidate> & candidates,
-  const concrete_block_perception::msg::Block & expected_target,
+  const concrete_block_world_model_interfaces::msg::Block & expected_target,
   double max_distance_m,
   const std::function<bool(
-    uint32_t, const sensor_msgs::msg::Image &, concrete_block_perception::msg::Block &,
+    uint32_t, const sensor_msgs::msg::Image &, concrete_block_world_model_interfaces::msg::Block &,
     std::string &)> & run_registration,
-  concrete_block_perception::msg::Block & out_best_block,
+  concrete_block_world_model_interfaces::msg::Block & out_best_block,
   double & out_best_dist)
 {
   bool best_valid = false;
   out_best_dist = std::numeric_limits<double>::infinity();
 
   for (const auto & candidate : candidates) {
-    concrete_block_perception::msg::Block block;
+    concrete_block_world_model_interfaces::msg::Block block;
     std::string reason;
     if (!run_registration(candidate.first, candidate.second, block, reason)) {
       continue;

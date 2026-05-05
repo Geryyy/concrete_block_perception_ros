@@ -5,7 +5,7 @@
 #include <sstream>
 #include <unordered_set>
 
-#include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include <yaml-cpp/yaml.h>
 
 namespace cbp::world_model
@@ -14,7 +14,7 @@ namespace cbp::world_model
 namespace
 {
 
-using concrete_block_perception::msg::Block;
+using concrete_block_world_model_interfaces::msg::Block;
 
 int parsePoseStatus(const YAML::Node & node, int fallback)
 {

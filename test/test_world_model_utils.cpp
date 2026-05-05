@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
 
 namespace cbpwm = cbp::world_model;
-using concrete_block_perception::msg::Block;
+using concrete_block_world_model_interfaces::msg::Block;
 
 TEST(WorldModelUtils, TaskTransitionRules) {
   EXPECT_TRUE(cbpwm::isValidTaskTransition(Block::TASK_UNKNOWN, Block::TASK_FREE));

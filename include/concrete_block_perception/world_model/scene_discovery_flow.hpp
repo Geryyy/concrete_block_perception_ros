@@ -7,7 +7,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
-#include "concrete_block_perception/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include "concrete_block_perception/world_model/registration_flow.hpp"
 #include "concrete_block_perception/utils/world_model_utils.hpp"
 
@@ -38,15 +38,15 @@ struct SceneFlowRuntime
       const sensor_msgs::msg::PointCloud2 &,
       const std_msgs::msg::Header &,
       double,
-      concrete_block_perception::msg::Block &,
+      concrete_block_world_model_interfaces::msg::Block &,
       std::string &)> run_registration;
 
   std::function<bool(
-      concrete_block_perception::msg::Block &,
+      concrete_block_world_model_interfaces::msg::Block &,
       std::string &,
       std::string &)> upsert_block;
 
-  std::function<bool(const std::string &, concrete_block_perception::msg::Block &)> get_expected_target;
+  std::function<bool(const std::string &, concrete_block_world_model_interfaces::msg::Block &)> get_expected_target;
 
   std::function<bool(
       uint32_t,

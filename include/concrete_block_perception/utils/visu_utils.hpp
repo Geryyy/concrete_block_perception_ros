@@ -4,11 +4,11 @@
 #include <rclcpp/rclcpp.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <std_msgs/msg/color_rgba.h>
-#include "concrete_block_perception/msg/block.hpp"
-#include "concrete_block_perception/msg/block_array.hpp"
+#include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/block_array.hpp"
 
-using Block = concrete_block_perception::msg::Block;
-using BlockArray = concrete_block_perception::msg::BlockArray;
+using Block = concrete_block_world_model_interfaces::msg::Block;
+using BlockArray = concrete_block_world_model_interfaces::msg::BlockArray;
 
 
 std_msgs::msg::ColorRGBA make_color(

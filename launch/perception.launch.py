@@ -122,19 +122,6 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", "WARN"],
                 condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
-            # IncludeLaunchDescription(
-            #     PathSubstitution(FindPackageShare("foxglove_bridge"))
-            #     / "launch"
-            #     / "foxglove_bridge_launch.xml",
-            #     launch_arguments={
-            #         "port": "8765",
-            #         "log_level": "warn",
-            #         "best_effort_qos_topic_whitelist": (
-            #             "^/(seyond_points.*|zed2i/.*/image.*|"
-            #             "yolos_segmentor/(debug_image|mask).*)"
-            #         ),
-            #     }.items(),
-            # ),
             Node(
                 package="image_transport",
                 executable="republish",

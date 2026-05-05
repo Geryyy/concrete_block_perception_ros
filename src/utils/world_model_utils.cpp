@@ -8,8 +8,8 @@
 namespace cbp::world_model
 {
 
-using concrete_block_perception::msg::Block;
-using concrete_block_perception::msg::PlanningSceneObject;
+using concrete_block_world_model_interfaces::msg::Block;
+using concrete_block_world_model_interfaces::msg::PlanningSceneObject;
 
 std::string normalizeMode(std::string mode)
 {

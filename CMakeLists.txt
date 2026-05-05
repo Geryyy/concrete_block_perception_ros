@@ -31,6 +31,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ros2_yolos_cpp REQUIRED)
+find_package(concrete_block_world_model_interfaces REQUIRED)
 
 # ------------------------------------------------------------
 # External library
@@ -45,16 +46,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SegmentAtPoint.srv"
   "srv/RegisterBlock.srv"
   "srv/TrackDetections.srv"
-  "srv/SetPerceptionMode.srv"
-  "srv/SetBlockTaskStatus.srv"
-  "srv/GetCoarseBlocks.srv"
-  "srv/GetPlanningScene.srv"
-  "srv/RunPoseEstimation.srv"
-  "srv/UpsertBlock.srv"
-  "msg/Block.msg"
-  "msg/BlockArray.msg"
-  "msg/PlanningSceneObject.msg"
-  "msg/PlanningScene.msg"
   "msg/TrackedDetection.msg"
   "msg/TrackedDetectionArray.msg"
   DEPENDENCIES
@@ -64,6 +55,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     std_msgs
     visualization_msgs
     vision_msgs
+    concrete_block_world_model_interfaces
 )
 
 rosidl_get_typesupport_target(
@@ -201,12 +193,6 @@ install(TARGETS
   block_detection_tracking_node
   block_registration_node
   world_model_node
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(PROGRAMS
-  scripts/detection_node.py
-  scripts/segmentation_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

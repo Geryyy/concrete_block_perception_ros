@@ -111,7 +111,7 @@ void processRefineGraspedWithFkRoi(
     cv::countNonZero(full_seg_mask));
 
   auto full_mask_msg = cv_bridge::CvImage(image->header, "mono8", full_seg_mask).toImageMsg();
-  concrete_block_perception::msg::Block block;
+  concrete_block_world_model_interfaces::msg::Block block;
   std::string reg_reason;
   const auto t_reg_start = std::chrono::steady_clock::now();
   const bool registration_ok = rt.run_registration_sync(
@@ -226,7 +226,7 @@ bool tryProcessRefineBlockWithPoseRoi(
     return true;
   }
 
-  concrete_block_perception::msg::Block expected_target;
+  concrete_block_world_model_interfaces::msg::Block expected_target;
   if (!rt.get_expected_target || !rt.get_expected_target(request.target_block_id, expected_target)) {
     RCLCPP_WARN(
       rt.logger,
@@ -291,7 +291,7 @@ bool tryProcessRefineBlockWithPoseRoi(
     cv::countNonZero(full_seg_mask));
 
   auto full_mask_msg = cv_bridge::CvImage(image->header, "mono8", full_seg_mask).toImageMsg();
-  concrete_block_perception::msg::Block block;
+  concrete_block_world_model_interfaces::msg::Block block;
   std::string reg_reason;
   const auto t_reg_start = std::chrono::steady_clock::now();
   const bool registration_ok = rt.run_registration_sync(
