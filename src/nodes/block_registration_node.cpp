@@ -126,12 +126,12 @@ private:
     input.T_world_cloud = transformToEigen(tf_cloud);
 
     if (allow_fk_seed && config_.local.use_fk_translation_seed && shouldUseFkSeedForGoal(object_class)) {
-      if (!resolveFkTranslationSeed(cloud.header, input.translation_seed_world)) {
+      if (!resolveFkPoseSeed(cloud.header, input.fk_pose_seed_world)) {
         RCLCPP_WARN(
           get_logger(),
-          "FK translation seed requested but unavailable; falling back to global translation seed.");
+          "FK pose seed requested but unavailable; falling back to global registration.");
       } else {
-        input.has_translation_seed_world = true;
+        input.has_fk_pose_seed = true;
       }
     } else if (!allow_fk_seed && config_.local.use_fk_translation_seed) {
       RCLCPP_DEBUG(
@@ -346,9 +346,9 @@ private:
     }
   }
 
-  bool resolveFkTranslationSeed(
+  bool resolveFkPoseSeed(
     const std_msgs::msg::Header & header,
-    Eigen::Vector3d & out_translation_world)
+    Eigen::Matrix4d & out_pose_world)
   {
     try {
       const auto tf_world_tcp =
@@ -358,20 +358,23 @@ private:
         rclcpp::Time(header.stamp),
         rclcpp::Duration::from_seconds(0.2));
 
-      Eigen::Matrix4d T_world_tcp = Eigen::Matrix4d::Identity();
-      T_world_tcp = transformToEigen(tf_world_tcp);
-      const Eigen::Vector4d p_tcp_block_h(
-        config_.fk_seed_tcp_to_block_xyz.x(),
-        config_.fk_seed_tcp_to_block_xyz.y(),
-        config_.fk_seed_tcp_to_block_xyz.z(),
-        1.0);
-      const Eigen::Vector4d p_world = T_world_tcp * p_tcp_block_h;
-      out_translation_world = p_world.head<3>();
+      const Eigen::Matrix4d T_world_tcp = transformToEigen(tf_world_tcp);
+
+      Eigen::Matrix4d T_tcp_block = Eigen::Matrix4d::Identity();
+      T_tcp_block.block<3, 1>(0, 3) = config_.fk_seed_tcp_to_block_xyz;
+      const Eigen::Vector3d & rpy = config_.fk_seed_tcp_to_block_rpy;
+      T_tcp_block.block<3, 3>(0, 0) =
+        (Eigen::AngleAxisd(rpy.z(), Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(rpy.y(), Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(rpy.x(), Eigen::Vector3d::UnitX()))
+        .toRotationMatrix();
+
+      out_pose_world = T_world_tcp * T_tcp_block;
       return true;
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN(
         get_logger(),
-        "FK seed TF lookup failed (%s <- %s): %s",
+        "FK pose seed TF lookup failed (%s <- %s): %s",
         config_.world_frame.c_str(),
         config_.fk_seed_tcp_frame.c_str(),
         ex.what());

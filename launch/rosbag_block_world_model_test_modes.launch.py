@@ -86,8 +86,8 @@ def generate_launch_description():
 
     declare_bag = DeclareLaunchArgument(
         "bag",
-        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
-        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_2_placement_rotated",
+        # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_1_pickup",
+        default_value="/home/vscode/Documents/2025-12-17/pzs_crane_2_placement_rotated",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_3_pickup_rotated",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_4_placement_far",
         # default_value="/home/vscode/Documents/2025-12-17/pzs_crane_5_stacking",
@@ -175,7 +175,7 @@ def generate_launch_description():
         enable_when=run_set_task_move,
     )
     refine_grasped_call = _one_shot_pose_estimation_call(
-        period_s=18.0,
+        period_s=24.0,
         mode="REFINE_GRASPED",
         target_block_id="",
         enable_when=run_refine_grasped,

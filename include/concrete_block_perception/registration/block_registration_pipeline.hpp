@@ -53,6 +53,8 @@ struct RegistrationInput
   Eigen::Matrix4d T_world_cloud;
   bool has_translation_seed_world{false};
   Eigen::Vector3d translation_seed_world{Eigen::Vector3d::Zero()};
+  bool has_fk_pose_seed{false};
+  Eigen::Matrix4d fk_pose_seed_world{Eigen::Matrix4d::Identity()};
 };
 
 struct RegistrationOutput

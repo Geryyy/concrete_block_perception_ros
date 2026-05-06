@@ -64,6 +64,7 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<bool>("loc_reg.enable_point_to_point_fallback", true);
   node.declare_parameter<std::string>("loc_reg.fk_seed.tcp_frame", "elastic/K8_tool_center_point");
   node.declare_parameter<std::vector<double>>("loc_reg.fk_seed.tcp_to_block_xyz", {0.0, 0.0, 0.0});
+  node.declare_parameter<std::vector<double>>("loc_reg.fk_seed.tcp_to_block_rpy", {0.0, 0.0, 0.0});
 
   node.declare_parameter<bool>("debug.publish_cutout", true);
   node.declare_parameter<bool>("debug.publish_mask", true);
@@ -202,6 +203,15 @@ load_registration_config(rclcpp::Node & node)
       fk_seed_tcp_to_block_xyz[0],
       fk_seed_tcp_to_block_xyz[1],
       fk_seed_tcp_to_block_xyz[2]);
+  }
+  const auto fk_seed_tcp_to_block_rpy =
+    node.get_parameter("loc_reg.fk_seed.tcp_to_block_rpy").as_double_array();
+  if (fk_seed_tcp_to_block_rpy.size() >= 3) {
+    cfg.fk_seed_tcp_to_block_rpy =
+      Eigen::Vector3d(
+      fk_seed_tcp_to_block_rpy[0],
+      fk_seed_tcp_to_block_rpy[1],
+      fk_seed_tcp_to_block_rpy[2]);
   }
 
   // ------------------------------------------------------------

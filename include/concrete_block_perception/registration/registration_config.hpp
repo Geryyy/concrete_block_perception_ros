@@ -31,6 +31,7 @@ struct BlockRegistrationConfig
   std::string dump_dir;
   std::string fk_seed_tcp_frame{"elastic/K8_tool_center_point"};
   Eigen::Vector3d fk_seed_tcp_to_block_xyz{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d fk_seed_tcp_to_block_rpy{Eigen::Vector3d::Zero()};
 };
 
 BlockRegistrationConfig

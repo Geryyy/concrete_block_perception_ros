@@ -75,23 +75,35 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     return out;
   }
 
-  GlobalRegistrationResult glob_res =
-    compute_global_registration(
-    cutout,
-    glob_.Z_WORLD,
-    glob_.angle_thresh,
-    glob_.MAX_PLANES,
-    glob_.dist_thresh,
-    glob_.min_inliers,
-    glob_.max_plane_center_dist,
-    glob_.enable_plane_clipping,
-    glob_.reject_tall_vertical);
+  GlobalRegistrationResult glob_res;
 
-  if (!glob_res.success) {
-    RCLCPP_WARN(logger_, "Global registration failed.");
-    out.failure_stage = "global_registration";
-    out.failure_reason = "global registration failed";
-    return out;
+  if (in.has_fk_pose_seed) {
+    glob_res.success = true;
+    glob_res.R_base = in.fk_pose_seed_world.block<3, 3>(0, 0);
+    glob_res.center = in.fk_pose_seed_world.block<3, 1>(0, 3);
+    glob_res.num_planes = 2;
+    if (verbose_logs_) {
+      RCLCPP_INFO(logger_, "Global registration bypassed: using FK pose seed.");
+    }
+  } else {
+    glob_res =
+      compute_global_registration(
+      cutout,
+      glob_.Z_WORLD,
+      glob_.angle_thresh,
+      glob_.MAX_PLANES,
+      glob_.dist_thresh,
+      glob_.min_inliers,
+      glob_.max_plane_center_dist,
+      glob_.enable_plane_clipping,
+      glob_.reject_tall_vertical);
+
+    if (!glob_res.success) {
+      RCLCPP_WARN(logger_, "Global registration failed.");
+      out.failure_stage = "global_registration";
+      out.failure_reason = "global registration failed";
+      return out;
+    }
   }
 
   const auto & icp_scene =

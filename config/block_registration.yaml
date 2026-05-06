@@ -58,7 +58,7 @@ registration_node:
       relax_num_faces_match: true
       # Use FK-based translation seed (world) for local ICP init.
       # Default false to avoid changing non-grasped behavior.
-      use_fk_translation_seed: false
+      use_fk_translation_seed: true
       # Adaptive ICP correspondence-distance scales applied to icp_dist.
       # Tried in order until a valid fit is found.
       icp_dist_multipliers: [1.0, 1.5, 2.0]
@@ -68,16 +68,18 @@ registration_node:
         tcp_frame: "elastic/K8_tool_center_point"
         # Translation from tcp_frame origin to block center in tcp_frame coordinates [m].
         tcp_to_block_xyz: [0.0, 0.0, 0.9]
+        # Rotation from tcp_frame to block frame as RPY [rad] (roll, pitch, yaw).
+        tcp_to_block_rpy: [3.14159265, 0.0, 0.0]
 
     debug:
       publish_cutout: true
-      publish_mask: false
+      publish_mask: true
       # Stage-level registration logs (cutout/preprocess/global/local) for diagnosis.
       verbose_logs: true
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
-      enable: true
+      enable: false
       # When enabled, write extra *_fail_* package on registration failures.
       failure_package: true
       dir: dump
