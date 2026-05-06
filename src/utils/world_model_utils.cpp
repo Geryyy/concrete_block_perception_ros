@@ -3,6 +3,8 @@
 #include <cmath>
 #include <utility>
 
+#include <geometry_msgs/msg/point.hpp>
+
 #include "concrete_block_perception/utils/world_model_utils.hpp"
 
 namespace cbp::world_model
@@ -324,6 +326,66 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
     label.color.a = 0.95f;
     label.text = b.id;
     ma.markers.push_back(std::move(label));
+
+    if (b.pose_status == Block::POSE_PRECISE) {
+      // Draw local X/Y/Z axes as arrows to verify orientation.
+      const double qx = b.pose.orientation.x;
+      const double qy = b.pose.orientation.y;
+      const double qz = b.pose.orientation.z;
+      const double qw = b.pose.orientation.w;
+
+      // Columns of the rotation matrix (world directions for block +X, +Y, +Z).
+      const double ax[3] = {
+        1 - 2 * (qy * qy + qz * qz),
+        2 * (qx * qy + qw * qz),
+        2 * (qx * qz - qw * qy)
+      };
+      const double ay[3] = {
+        2 * (qx * qy - qw * qz),
+        1 - 2 * (qx * qx + qz * qz),
+        2 * (qy * qz + qw * qx)
+      };
+      const double az[3] = {
+        2 * (qx * qz + qw * qy),
+        2 * (qy * qz - qw * qx),
+        1 - 2 * (qx * qx + qy * qy)
+      };
+
+      constexpr double kAxisLen = 0.5;
+      struct AxisDef { const double * dir; float r, g, bl; };
+      const AxisDef axes[3] = {
+        {ax, 1.0f, 0.0f, 0.0f},   // X → red
+        {ay, 0.0f, 1.0f, 0.0f},   // Y → green
+        {az, 0.0f, 0.0f, 1.0f},   // Z → blue
+      };
+
+      for (const auto & a : axes) {
+        visualization_msgs::msg::Marker arrow;
+        arrow.header = marker_header;
+        arrow.ns = "cbp_block_axes";
+        arrow.id = marker_id++;
+        arrow.type = visualization_msgs::msg::Marker::ARROW;
+        arrow.action = visualization_msgs::msg::Marker::ADD;
+        arrow.scale.x = 0.025;   // shaft diameter
+        arrow.scale.y = 0.05;    // head diameter
+        arrow.scale.z = 0.0;
+        arrow.color.r = a.r;
+        arrow.color.g = a.g;
+        arrow.color.b = a.bl;
+        arrow.color.a = 1.0f;
+
+        geometry_msgs::msg::Point p0, p1;
+        p0.x = b.pose.position.x;
+        p0.y = b.pose.position.y;
+        p0.z = b.pose.position.z;
+        p1.x = p0.x + kAxisLen * a.dir[0];
+        p1.y = p0.y + kAxisLen * a.dir[1];
+        p1.z = p0.z + kAxisLen * a.dir[2];
+        arrow.points.push_back(p0);
+        arrow.points.push_back(p1);
+        ma.markers.push_back(std::move(arrow));
+      }
+    }
   }
 
   return ma;
