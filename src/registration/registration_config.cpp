@@ -52,7 +52,8 @@ load_registration_config(rclcpp::Node & node)
 
   node.declare_parameter<double>("glob_reg.dist_thresh", 0.02);
   node.declare_parameter<int>("glob_reg.min_inliers", 100);
-  node.declare_parameter<double>("glob_reg.angle_thresh_degree", 30.0);
+  node.declare_parameter<double>("glob_reg.angle_thresh_top_degree", 30.0);
+  node.declare_parameter<double>("glob_reg.angle_thresh_front_degree", 15.0);
   node.declare_parameter<double>("glob_reg.max_plane_center_dist", 0.6);
   node.declare_parameter<bool>("glob_reg.enable_plane_clipping", false);
   node.declare_parameter<bool>("glob_reg.reject_tall_vertical", true);
@@ -164,11 +165,19 @@ load_registration_config(rclcpp::Node & node)
   cfg.glob.max_plane_center_dist =
     node.get_parameter("glob_reg.max_plane_center_dist").as_double();
 
-  double angle_deg =
-    node.get_parameter("glob_reg.angle_thresh_degree").as_double();
+  double angle_thresh_top_deg =
+    node.get_parameter("glob_reg.angle_thresh_top_degree").as_double();
 
-  cfg.glob.angle_thresh =
-    std::cos(angle_deg * M_PI / 180.0);
+  cfg.glob.angle_thresh_top =
+    std::cos(angle_thresh_top_deg * M_PI / 180.0);
+
+  double angle_thresh_front_deg =
+    node.get_parameter("glob_reg.angle_thresh_front_degree").as_double();
+
+  // Front/side plane normals should be close to horizontal, so cos_z must stay
+  // below sin(max tilt away from horizontal). The plane selector tests cos_z < threshold.
+  cfg.glob.angle_thresh_front =
+    std::sin(angle_thresh_front_deg * M_PI / 180.0);
 
   bool enable_plane_clipping =
     node.get_parameter("glob_reg.enable_plane_clipping").as_bool();

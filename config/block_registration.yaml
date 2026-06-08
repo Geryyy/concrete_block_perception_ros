@@ -37,8 +37,11 @@ registration_node:
       dist_thresh: 0.02
       # Minimum number of inliers per plane
       min_inliers: 100
-      # Maximum angle (deg) between plane normal and world Z
-      angle_thresh_degree: 30.0
+      # Maximum angle (deg) between top-plane normal and world Z
+      angle_thresh_top_degree: 30.0
+      # Maximum tilt (deg) of a front/side-plane normal away from horizontal.
+      # Internally this is tested as abs(normal dot world_z) < sin(angle).
+      angle_thresh_front_degree: 20.0
       # max distance between plane centers, i.e. segmentation mask off - abort if top plane and ground plane are visible
       max_plane_center_dist: 0.6
       # Whether to enable plane clipping (i.e. mask out points above the detected plane)
@@ -82,7 +85,7 @@ registration_node:
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
-      enable: false
+      enable: true
       # When enabled, write extra *_fail_* package on registration failures.
       failure_package: true
       dir: dump

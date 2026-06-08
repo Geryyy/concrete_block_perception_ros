@@ -90,7 +90,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       compute_global_registration(
       cutout,
       glob_.Z_WORLD,
-      glob_.angle_thresh,
+      glob_.angle_thresh_top,
+      glob_.angle_thresh_front,
       glob_.MAX_PLANES,
       glob_.dist_thresh,
       glob_.min_inliers,

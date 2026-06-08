@@ -31,7 +31,8 @@ struct GlobalRegistrationParams
   Eigen::Vector3d Z_WORLD{0, 0, 1};
   double dist_thresh{0.02};
   int min_inliers{100};
-  double angle_thresh{0.9};
+  double angle_thresh_top{0.9};
+  double angle_thresh_front{0.3};
   double max_plane_center_dist{0.6};
   bool enable_plane_clipping{false};
   bool reject_tall_vertical{true};
