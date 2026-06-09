@@ -33,7 +33,6 @@ def generate_launch_description():
                 remappings=[
                     ("detections", "/yolos_segmentor/detections"),
                     ("masks", "/yolos_segmentor/mask"),
-                    ("tracked_detections", "/cbp/tracked_detections"),
                 ],
             ),
         ]

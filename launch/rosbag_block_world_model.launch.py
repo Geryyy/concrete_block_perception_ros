@@ -58,7 +58,7 @@ def generate_launch_description():
 
     declare_world_model_params = DeclareLaunchArgument(
         "world_model_params",
-        default_value=PathSubstitution(FindPackageShare("concrete_block_perception"))
+        default_value=PathSubstitution(FindPackageShare("concrete_block_world_model"))
         / "config"
         / "world_model.yaml",
         description="YAML parameter file for world model node",
@@ -104,7 +104,7 @@ def generate_launch_description():
     # -----------------------
     world_node_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_perception"))
+            PathSubstitution(FindPackageShare("concrete_block_world_model"))
             / "launch"
             / "world_node.launch.py"
         ),

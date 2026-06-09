@@ -13,7 +13,7 @@
 #include <vector>
 #include <string>
 
-#include "concrete_block_perception/action/register_block.hpp"
+#include "concrete_block_perception_interfaces/action/register_block.hpp"
 #include "concrete_block_perception/registration/registration_config.hpp"
 #include "pcd_block_estimation/template_utils.hpp"
 
@@ -38,7 +38,7 @@ public:
     const Eigen::Matrix4d & T);
 
   void dumpInput(
-    const concrete_block_perception::action::RegisterBlock::Goal & goal);
+    const concrete_block_perception_interfaces::action::RegisterBlock::Goal & goal);
 
   void dumpFailurePackage(
     const sensor_msgs::msg::PointCloud2 & cloud,

@@ -8,7 +8,7 @@ This document describes:
 ## 1) One-Shot Modes
 
 The world model is driven via:
-- `/world_model_node/run_pose_estimation` (`concrete_block_perception/srv/RunPoseEstimation`)
+- `/world_model_node/run_pose_estimation` (`concrete_block_world_model_interfaces/srv/RunPoseEstimation`)
 
 Supported modes:
 
@@ -82,7 +82,7 @@ Use:
 ## 4) World Model Configuration (FK+ROI + Fusion)
 
 File:
-- [world_model.yaml](/workspaces/ros2_baustelle_ws/src/concrete_block_stack/concrete_block_perception/config/world_model.yaml)
+- [world_model.yaml](/workspaces/ros2_baustelle_ws/src/concrete_block_stack/concrete_block_world_model/config/world_model.yaml)
 
 Relevant keys:
 

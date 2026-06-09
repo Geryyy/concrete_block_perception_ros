@@ -11,6 +11,7 @@ from launch import LaunchDescription
 
 def generate_launch_description():
     pkg_dir = FindPackageShare("concrete_block_perception")
+    world_model_pkg_dir = FindPackageShare("concrete_block_world_model")
 
     # Declare launch arguments
     model_arg = DeclareLaunchArgument(
@@ -47,7 +48,7 @@ def generate_launch_description():
     world_model_overlay_arg = DeclareLaunchArgument(
         "world_model_overlay_params_file",
         default_value=PathJoinSubstitution(
-            [pkg_dir, "config", "world_model_seed_none.yaml"]
+            [world_model_pkg_dir, "config", "world_model_seed_none.yaml"]
         ),
         description="Optional overlay params file for world_model_node startup seeding",
     )
@@ -79,17 +80,9 @@ def generate_launch_description():
         ]
     )
 
-    calib_yaml = PathJoinSubstitution(
-        [
-            FindPackageShare("concrete_block_perception"),
-            "config",
-            "calib_zed2i_to_seyond.yaml",
-        ]
-    )
-
     world_model_params = PathJoinSubstitution(
         [
-            FindPackageShare("concrete_block_perception"),
+            FindPackageShare("concrete_block_world_model"),
             "config",
             "world_model.yaml",
         ]
@@ -171,7 +164,7 @@ def generate_launch_description():
                 condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             Node(
-                package="concrete_block_perception",
+                package="concrete_block_world_model",
                 executable="world_model_node",
                 name="world_model_node",
                 condition=IfCondition(LaunchConfiguration("start_world_model")),
@@ -180,7 +173,6 @@ def generate_launch_description():
                     LaunchConfiguration("world_model_overlay_params_file"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
-                        "calib_yaml": calib_yaml,
                     },
                 ],
                 output="screen",
@@ -193,7 +185,6 @@ def generate_launch_description():
                     ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
                     # Point cloud input (10 Hz)
                     ("points", "/seyond_points"),
-                    ("tracked_detections", "/cbp/tracked_detections"),
                     # =========================
                     # Outputs
                     # =========================

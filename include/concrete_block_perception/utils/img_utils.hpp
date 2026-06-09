@@ -6,7 +6,7 @@
 #include <vision_msgs/msg/pose2_d.hpp>
 
 #include <sensor_msgs/msg/image.hpp>
-#include "concrete_block_perception/msg/tracked_detection_array.hpp"
+#include "concrete_block_perception_interfaces/msg/tracked_detection_array.hpp"
 
 #include <opencv2/opencv.hpp>
 
@@ -47,12 +47,12 @@ void drawDetectionBoxes(
 
 void drawTrackingBoxes(
   cv::Mat & image,
-  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const concrete_block_perception_interfaces::msg::TrackedDetectionArray & tracked,
   const cv::Scalar & color);
 
 void drawCircle(
   cv::Mat & image,
-  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const concrete_block_perception_interfaces::msg::TrackedDetectionArray & tracked,
   const cv::Scalar & color,
   int thickness,
   int line_type);

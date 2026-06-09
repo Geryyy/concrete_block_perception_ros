@@ -58,17 +58,9 @@ def generate_launch_description():
         ]
     )
 
-    calib_yaml = PathJoinSubstitution(
-        [
-            FindPackageShare("concrete_block_perception"),
-            "config",
-            "calib_zed2i_to_seyond.yaml",
-        ]
-    )
-
     world_model_params = PathJoinSubstitution(
         [
-            FindPackageShare("concrete_block_perception"),
+            FindPackageShare("concrete_block_world_model"),
             "config",
             "world_model.yaml",
         ]
@@ -159,14 +151,13 @@ def generate_launch_description():
                 condition=needs_registration,
             ),
             Node(
-                package="concrete_block_perception",
+                package="concrete_block_world_model",
                 executable="world_model_node",
                 name="world_model_node",
                 parameters=[
                     world_model_params,
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
-                        "calib_yaml": calib_yaml,
                     },
                 ],
                 output="screen",
@@ -174,7 +165,6 @@ def generate_launch_description():
                 remappings=[
                     ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
                     ("points", "/seyond_points"),
-                    ("tracked_detections", "/cbp/tracked_detections"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),

@@ -171,7 +171,7 @@ void drawDetectionBoxes(
 
 void drawTrackingBoxes(
   cv::Mat & image,
-  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const concrete_block_perception_interfaces::msg::TrackedDetectionArray & tracked,
   const cv::Scalar & color)
 {
   for (const auto & t : tracked.detections) {
@@ -181,7 +181,7 @@ void drawTrackingBoxes(
 
 void drawCircle(
   cv::Mat & image,
-  const concrete_block_perception::msg::TrackedDetectionArray & tracked,
+  const concrete_block_perception_interfaces::msg::TrackedDetectionArray & tracked,
   const cv::Scalar & color,
   int thickness = 2,
   int line_type = cv::LINE_AA)

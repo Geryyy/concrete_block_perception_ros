@@ -13,8 +13,8 @@
 #include <chrono>
 #include <thread>
 
-#include "concrete_block_perception/action/register_block.hpp"
-#include "concrete_block_perception/srv/register_block.hpp"
+#include "concrete_block_perception_interfaces/action/register_block.hpp"
+#include "concrete_block_perception_interfaces/srv/register_block.hpp"
 #include "concrete_block_perception/utils/io_utils.hpp"
 
 #include "concrete_block_perception/registration/block_registration_pipeline.hpp"
@@ -28,11 +28,11 @@ using namespace concrete_block_perception;
 class BlockRegistrationNode : public rclcpp::Node
 {
   using RegisterBlockAction =
-    concrete_block_perception::action::RegisterBlock;
+    concrete_block_perception_interfaces::action::RegisterBlock;
 
   using GoalHandleRegisterBlock =
     rclcpp_action::ServerGoalHandle<RegisterBlockAction>;
-  using RegisterBlockSrv = concrete_block_perception::srv::RegisterBlock;
+  using RegisterBlockSrv = concrete_block_perception_interfaces::srv::RegisterBlock;
 
 public:
   BlockRegistrationNode()

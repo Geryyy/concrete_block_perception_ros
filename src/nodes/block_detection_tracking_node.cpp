@@ -3,11 +3,11 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "concrete_block_perception/srv/track_detections.hpp"
+#include "concrete_block_perception_interfaces/srv/track_detections.hpp"
 #include "concrete_block_perception/detection/detection_config.hpp"
 #include "concrete_block_perception/detection/block_detection_tracker.hpp"
 
-using concrete_block_perception::srv::TrackDetections;
+using concrete_block_perception_interfaces::srv::TrackDetections;
 using concrete_block_perception::BlockDetectionTracker;
 using concrete_block_perception::DetectionConfig;
 
@@ -93,7 +93,7 @@ private:
         e.what());
 
       response->tracked =
-        concrete_block_perception::msg::TrackedDetectionArray();
+        concrete_block_perception_interfaces::msg::TrackedDetectionArray();
     }
   }
 

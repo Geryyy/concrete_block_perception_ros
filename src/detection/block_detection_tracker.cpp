@@ -21,7 +21,7 @@ void BlockDetectionTracker::reset()
   next_detection_id_ = 1;
 }
 
-msg::TrackedDetectionArray BlockDetectionTracker::update(
+concrete_block_perception_interfaces::msg::TrackedDetectionArray BlockDetectionTracker::update(
   const vision_msgs::msg::Detection2DArray & msg,
   const sensor_msgs::msg::Image::ConstSharedPtr & mask_msg)
 {
@@ -46,7 +46,7 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
   // 1.1 BYPASS MODE (no tracking, direct forward)
   // -------------------------------------------------
   if (params_.bypass_tracking) {
-    msg::TrackedDetectionArray out;
+    concrete_block_perception_interfaces::msg::TrackedDetectionArray out;
     out.stamp = now;
 
     // Zero-copy mask access (same as normal path)
@@ -59,7 +59,7 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
     for (size_t i = 0; i < valid_indices.size(); ++i) {
       const auto & det = msg.detections[valid_indices[i]];
 
-      msg::TrackedDetection td;
+      concrete_block_perception_interfaces::msg::TrackedDetection td;
 
       // You can choose:
       // td.detection_id = -1;
@@ -214,7 +214,7 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
   // -------------------------------------------------
   // 6. Output (mask extraction ONLY here)
   // -------------------------------------------------
-  msg::TrackedDetectionArray out;
+  concrete_block_perception_interfaces::msg::TrackedDetectionArray out;
   out.stamp = now;
 
   for (const auto & kv : tracks_) {
@@ -227,7 +227,7 @@ msg::TrackedDetectionArray BlockDetectionTracker::update(
       continue;
     }
 
-    msg::TrackedDetection td;
+    concrete_block_perception_interfaces::msg::TrackedDetection td;
     td.detection_id = track.detection_id;
     td.detection = track.detection;
     td.age = track.age;

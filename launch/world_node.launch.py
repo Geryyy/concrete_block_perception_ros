@@ -6,17 +6,9 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    calib_yaml = PathJoinSubstitution(
-        [
-            FindPackageShare("concrete_block_perception"),
-            "config",
-            "calib_zed2i_to_seyond.yaml",
-        ]
-    )
-
     default_world_model_params = PathJoinSubstitution(
         [
-            FindPackageShare("concrete_block_perception"),
+            FindPackageShare("concrete_block_world_model"),
             "config",
             "world_model.yaml",
         ]
@@ -43,19 +35,17 @@ def generate_launch_description():
                 default_value=default_world_model_params,
             ),
             Node(
-                package="concrete_block_perception",
+                package="concrete_block_world_model",
                 executable="world_model_node",
                 name="world_model_node",
                 parameters=[
                     LaunchConfiguration("params_file"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
-                        "calib_yaml": calib_yaml,
                     },
                 ],
                 remappings=[
                     ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
-                    ("tracked_detections", "/cbp/tracked_detections"),
                     ("points", "/seyond_points"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),

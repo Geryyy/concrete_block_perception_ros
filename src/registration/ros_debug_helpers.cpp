@@ -165,7 +165,7 @@ void RosDebugHelpers::publishVisualization(
 }
 
 void RosDebugHelpers::dumpInput(
-  const concrete_block_perception::action::RegisterBlock::Goal & goal)
+  const concrete_block_perception_interfaces::action::RegisterBlock::Goal & goal)
 {
   if (!dump_enabled_) {
     return;

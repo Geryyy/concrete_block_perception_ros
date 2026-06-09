@@ -5,7 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <opencv2/core.hpp>
 
-#include "concrete_block_perception/msg/tracked_detection_array.hpp"
+#include "concrete_block_perception_interfaces/msg/tracked_detection_array.hpp"
 #include "concrete_block_perception/detection/detection_params.hpp"
 
 #include <unordered_map>
@@ -19,7 +19,7 @@ class BlockDetectionTracker
 public:
   explicit BlockDetectionTracker(const DetectionParams & params);
 
-  msg::TrackedDetectionArray update(
+  concrete_block_perception_interfaces::msg::TrackedDetectionArray update(
     const vision_msgs::msg::Detection2DArray & msg,
     const sensor_msgs::msg::Image::ConstSharedPtr & mask_msg);
 

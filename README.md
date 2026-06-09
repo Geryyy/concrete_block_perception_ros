@@ -10,7 +10,7 @@ ZED2i image ──────────────────────�
   compressed ──► image_transport/republish ──► /zed2i/.../image_raw       │
   /seyond_points/compressed ──► cloudini_topic_converter ──► /seyond_points│
                                                                            ▼
-ros2_yolos_cpp (YOLO segmentor service) ◄── block_detection_tracking_node ──► /cbp/tracked_detections
+ros2_yolos_cpp (YOLO segmentor service) ◄── block_detection_tracking_node
                                                 │
                                                 │ (sync: image + points)
                                                 ▼
@@ -25,7 +25,7 @@ Three executables:
 
 | Executable | Config | Role |
 |---|---|---|
-| `block_detection_tracking_node` | `block_detection_tracking.yaml` | Calls YOLO segmentor, tracks detections frame-to-frame, publishes `TrackedDetectionArray` |
+| `block_detection_tracking_node` | `block_detection_tracking.yaml` | Tracks detections frame-to-frame via `TrackDetections` service |
 | `block_registration_node` | `block_registration.yaml` | Action server; runs ICP registration pipeline (cutout → preprocess → global reg → local ICP) |
 | `world_model_node` | `world_model.yaml` | Orchestrates the full pipeline; owns the persistent block world model; exposes all BT-facing services |
 
@@ -35,7 +35,6 @@ Three executables:
 |---|---|---|---|
 | `/zed2i/warped/left/image_rect_color/image_raw` | `sensor_msgs/Image` | in | Rectified left camera image (remapped to `image`) |
 | `/seyond_points` | `sensor_msgs/PointCloud2` | in | LiDAR point cloud (remapped to `points`) |
-| `/cbp/tracked_detections` | `TrackedDetectionArray` | in (world_model) | Segmented + tracked detections from detection node |
 | `/cbp/block_world_model` | `BlockArray` | out | Persistent block world model (all known blocks + poses + status) |
 | `/cbp/block_world_model_markers` | `MarkerArray` | out | RViz visualization: block cubes + axes arrows |
 | `/cbp/debug/detection_overlay` | `sensor_msgs/Image` | debug | YOLO mask overlay on camera image |
@@ -159,7 +158,7 @@ The relative measurement approach (REFINE_GRASPED vs. REFINE_BLOCK on an already
 
 | File | Node | Key parameters |
 |---|---|---|
-| `config/world_model.yaml` | world_model_node | block dimensions, association thresholds, registration gates, REFINE_GRASPED FK/ROI config, static scene objects |
+| `concrete_block_world_model/config/world_model.yaml` | world_model_node | block dimensions, association thresholds, registration gates, REFINE_GRASPED FK/ROI config, static scene objects |
 | `config/block_registration.yaml` | block_registration_node | ICP dist, global reg thresholds, FK seed TCP frame + offset, plane clipping |
 | `config/block_detection_tracking.yaml` | block_detection_tracking_node | YOLO confidence threshold, tracking params |
 | `config/calib_zed2i_to_seyond.yaml` | registration_node + world_model_node | Extrinsic T_camera_lidar and camera intrinsics K |
@@ -170,7 +169,7 @@ All parameters are loaded at startup via ROS 2 parameter files. Changes take eff
 
 | File | Purpose |
 |---|---|
-| `perception.launch.py` | **Primary** — starts all four components (cloudini decompressor, image_transport republisher, YOLO service, detection/tracking node, registration node, world_model_node). Args: `pipeline_mode`, `use_gpu`, `use_sim_time`, `start_processing_stack`, `start_world_model`. |
+| `perception.launch.py` | **Primary** — starts processing components plus `concrete_block_world_model/world_model_node`. Args: `pipeline_mode`, `use_gpu`, `use_sim_time`, `start_processing_stack`, `start_world_model`. |
 | `rosbag_block_world_model_test_modes.launch.py` | Development/testing — replays a bag and optionally triggers SCENE_DISCOVERY / REFINE_BLOCK / REFINE_GRASPED via launch args. See `README_PERCEPTION_MODES.md` for all args. |
 | `block_registration.launch.py` | Registration node only (standalone ICP testing). |
 | `detection_tracking.launch.py` | Detection + tracking node only. |

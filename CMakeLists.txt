@@ -25,46 +25,17 @@ find_package(cv_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Open3D CONFIG REQUIRED)
 find_package(message_filters REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ros2_yolos_cpp REQUIRED)
-find_package(concrete_block_world_model_interfaces REQUIRED)
+find_package(concrete_block_perception_interfaces REQUIRED)
 
 # ------------------------------------------------------------
 # External library
 # ------------------------------------------------------------
 add_subdirectory(external/pcd_block_estimation)
-
-# ------------------------------------------------------------
-# Interfaces
-# ------------------------------------------------------------
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/RegisterBlock.action"
-  "srv/SegmentAtPoint.srv"
-  "srv/RegisterBlock.srv"
-  "srv/TrackDetections.srv"
-  "msg/TrackedDetection.msg"
-  "msg/TrackedDetectionArray.msg"
-  DEPENDENCIES
-    sensor_msgs
-    geometry_msgs
-    builtin_interfaces
-    std_msgs
-    visualization_msgs
-    vision_msgs
-    concrete_block_world_model_interfaces
-)
-
-rosidl_get_typesupport_target(
-  cpp_typesupport_target
-  ${PROJECT_NAME}
-  "rosidl_typesupport_cpp"
-)
-
-ament_export_dependencies(rosidl_default_runtime)
 
 # ============================================================
 # BLOCK DETECTION TRACKING NODE
@@ -73,8 +44,6 @@ add_executable(block_detection_tracking_node
   src/nodes/block_detection_tracking_node.cpp
   src/utils/io_utils.cpp
   src/utils/img_utils.cpp
-  src/utils/block_utils.cpp
-  src/utils/visu_utils.cpp
   src/utils/detection_association.cpp
   src/detection/block_detection_tracker.cpp
   src/detection/detection_config.cpp
@@ -87,10 +56,10 @@ target_include_directories(block_detection_tracking_node PUBLIC
 
 target_link_libraries(block_detection_tracking_node
   pcd_block_estimation
-  ${cpp_typesupport_target}
 )
 
 ament_target_dependencies(block_detection_tracking_node
+  concrete_block_perception_interfaces
   rclcpp
   sensor_msgs
   geometry_msgs
@@ -116,12 +85,12 @@ target_include_directories(block_registration_node PUBLIC
 
 target_link_libraries(block_registration_node
   pcd_block_estimation
-  ${cpp_typesupport_target}
   Open3D::Open3D
   ${OpenCV_LIBS}
 )
 
 ament_target_dependencies(block_registration_node
+  concrete_block_perception_interfaces
   rclcpp
   rclcpp_action
   sensor_msgs
@@ -134,65 +103,12 @@ ament_target_dependencies(block_registration_node
   tf2_geometry_msgs
 )
 
-# ============================================================
-# WORLD MODEL NODE
-# ============================================================
-add_executable(world_model_node
-  src/nodes/perception_orchestrator_node.cpp
-  src/nodes/perception_orchestrator_core.cpp
-  src/nodes/perception_orchestrator_tf_roi.cpp
-  src/nodes/perception_orchestrator_services.cpp
-  src/nodes/perception_orchestrator_pipeline.cpp
-  src/world_model/config_loader.cpp
-  src/world_model/refine_flow.cpp
-  src/world_model/scene_discovery_flow.cpp
-  src/world_model/registration_flow.cpp
-  src/world_model/roi_refinement.cpp
-  src/world_model/roi_processing.cpp
-  src/world_model/state_manager.cpp
-  src/utils/coarse_pose_utils.cpp
-  src/utils/io_utils.cpp
-  src/utils/img_utils.cpp
-  src/utils/block_utils.cpp
-  src/utils/world_model_utils.cpp
-  src/utils/visu_utils.cpp
-)
-
-target_include_directories(world_model_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(world_model_node
-  pcd_block_estimation
-  ${cpp_typesupport_target}
-  Open3D::Open3D
-  ${OpenCV_LIBS}
-  yaml-cpp::yaml-cpp
-)
-
-ament_target_dependencies(world_model_node
-  rclcpp
-  std_msgs
-  sensor_msgs
-  geometry_msgs
-  vision_msgs
-  cv_bridge
-  message_filters
-  visualization_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-  ros2_yolos_cpp
-)
-
 # ------------------------------------------------------------
 # Install
 # ------------------------------------------------------------
 install(TARGETS
   block_detection_tracking_node
   block_registration_node
-  world_model_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -211,24 +127,6 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
-
-  ament_add_gtest(test_world_model_utils
-    test/test_world_model_utils.cpp
-    src/utils/world_model_utils.cpp
-  )
-  if(TARGET test_world_model_utils)
-    target_include_directories(test_world_model_utils PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:include>
-    )
-    target_link_libraries(test_world_model_utils
-      ${cpp_typesupport_target}
-    )
-    ament_target_dependencies(test_world_model_utils
-      std_msgs
-      visualization_msgs
-    )
-  endif()
 
 endif()
 

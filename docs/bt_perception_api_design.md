@@ -69,7 +69,7 @@ bool enable_debug
 float32 timeout_s
 ---
 bool success
-concrete_block_perception/msg/BlockArray blocks
+concrete_block_world_model_interfaces/msg/BlockArray blocks
 string message
 ```
 
@@ -80,7 +80,7 @@ File: `srv/GetBlockState.srv`
 string block_id
 ---
 bool found
-concrete_block_perception/msg/Block block
+concrete_block_world_model_interfaces/msg/Block block
 float32 age_s
 string quality   # COARSE | PRECISE
 ```
@@ -204,7 +204,7 @@ Prioritize this order:
 ---
 
 ## Backward Compatibility
-- Keep current launch files and topics (`/cbp/block_world_model`, `/cbp/tracked_detections`, debug overlays).
+- Keep current launch files and topics (`/cbp/block_world_model`, debug overlays).
 - New interfaces are additive.
 - Existing `pipeline_mode` can map to default orchestrator mode for non-BT usage.
 
