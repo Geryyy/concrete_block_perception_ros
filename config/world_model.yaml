@@ -1,14 +1,6 @@
 world_model_node:
   ros__parameters:
     # ----------------------------------
-    # Commissioning mode
-    # segment | track | register | full
-    # ----------------------------------
-    pipeline_mode: "full"
-    # BT-facing runtime mode for the staged wall-build workflow.
-    perception_mode: "IDLE"
-
-    # ----------------------------------
     # World model (minimal)
     # ----------------------------------
     world_model:

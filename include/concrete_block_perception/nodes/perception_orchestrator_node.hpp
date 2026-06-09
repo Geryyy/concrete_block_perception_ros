@@ -41,7 +41,6 @@
 #include "concrete_block_perception/srv/register_block.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
-#include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_perception/world_model/config_loader.hpp"
 #include "concrete_block_perception/world_model/refine_flow.hpp"
@@ -59,7 +58,6 @@ namespace cbpwm = cbp::world_model;
 class PerceptionOrchestratorNode : public rclcpp::Node
 {
   using SegmentSrv = ros2_yolos_cpp::srv::SegmentImage;
-  using SetModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using SetBlockTaskStatusSrv = concrete_block_world_model_interfaces::srv::SetBlockTaskStatus;
   using GetCoarseSrv = concrete_block_world_model_interfaces::srv::GetCoarseBlocks;
   using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
@@ -119,8 +117,6 @@ public:
 
 private:
   void resetPerfCounters();
-  bool applyPerceptionMode(const std::string & mode);
-  bool needsRegistration() const;
   std::string resolveGraspedBlockId();
   cbpwm::AssociationConfig associationConfig() const;
   bool buildCoarseBlockFromMaskAndCloud(
@@ -210,9 +206,6 @@ private:
   void handleRunPoseEstimation(
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response);
-  void handleSetMode(
-    const std::shared_ptr<SetModeSrv::Request> request,
-    std::shared_ptr<SetModeSrv::Response> response);
   void handleGetCoarseBlocks(
     const std::shared_ptr<GetCoarseSrv::Request> request,
     std::shared_ptr<GetCoarseSrv::Response> response);
@@ -255,7 +248,6 @@ private:
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<RegisterBlockSrv>::SharedPtr register_srv_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
-  rclcpp::Service<SetModeSrv>::SharedPtr set_mode_srv_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
@@ -280,10 +272,6 @@ private:
   PlanningScene latest_planning_scene_;
   std::mutex latest_planning_scene_mutex_;
 
-  std::mutex mode_mutex_;
-  cbpwm::PerceptionMode perception_mode_{cbpwm::PerceptionMode::kSceneScan};
-  cbpwm::PipelineMode pipeline_mode_{cbpwm::PipelineMode::kFull};
-
   std::atomic<bool> busy_{false};
   std::atomic<uint64_t> dropped_busy_frames_{0};
   std::atomic<uint64_t> dropped_sync_frames_{0};
@@ -293,8 +281,8 @@ private:
   std::vector<PlanningSceneObject> static_scene_objects_;
   std::array<double, 3> block_dimensions_m_{0.6, 0.9, 0.6};
   RuntimeConfig runtime_cfg_;
-  bool debug_detection_overlay_enabled_{true};
-  bool debug_refine_grasped_roi_input_enabled_{true};
+  std::atomic<bool> debug_detection_overlay_enabled_{true};
+  std::atomic<bool> debug_refine_grasped_roi_input_enabled_{true};
   bool perf_log_timing_enabled_{true};
   int perf_log_every_n_frames_{20};
   uint64_t world_block_counter_{0};

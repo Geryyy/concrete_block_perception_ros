@@ -20,10 +20,6 @@ def generate_launch_description():
     rviz = LaunchConfiguration("rviz")
     bag_path = LaunchConfiguration("bag")
     world_model_params = LaunchConfiguration("world_model_params")
-    perception_mode = LaunchConfiguration("perception_mode")
-    block_detection_tracking_params = LaunchConfiguration(
-        "block_detection_tracking_params"
-    )
 
     # -----------------------
     # Launch arguments
@@ -70,7 +66,7 @@ def generate_launch_description():
     declare_perception_mode = DeclareLaunchArgument(
         "perception_mode",
         default_value="IDLE",
-        description="Startup perception mode for world model node",
+        description="Deprecated; ignored. Processing is triggered by run_pose_estimation.",
     )
 
     # -----------------------
@@ -115,7 +111,6 @@ def generate_launch_description():
         launch_arguments={
             "use_sim_time": use_sim_time,
             "params_file": world_model_params,
-            "perception_mode": perception_mode,
         }.items(),
     )
 

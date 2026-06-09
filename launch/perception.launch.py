@@ -1,9 +1,6 @@
-import os
-import subprocess
 from launch.actions import IncludeLaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from ament_index_python import get_package_share_directory
 from launch.substitutions import LaunchConfiguration, PathSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -45,7 +42,7 @@ def generate_launch_description():
     mode_arg = DeclareLaunchArgument(
         "pipeline_mode",
         default_value="full",
-        description="segment | track | register | full",
+        description="Deprecated; ignored. Processing is triggered by run_pose_estimation.",
     )
     world_model_overlay_arg = DeclareLaunchArgument(
         "world_model_overlay_params_file",
@@ -184,7 +181,6 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
-                        "pipeline_mode": LaunchConfiguration("pipeline_mode"),
                     },
                 ],
                 output="screen",

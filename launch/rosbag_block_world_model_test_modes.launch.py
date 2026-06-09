@@ -76,7 +76,6 @@ def generate_launch_description():
     bag_path = LaunchConfiguration("bag")
     use_sim_time = LaunchConfiguration("use_sim_time")
     rviz = LaunchConfiguration("rviz")
-    perception_mode = LaunchConfiguration("perception_mode")
     run_scene_discovery = LaunchConfiguration("run_scene_discovery")
     run_refine_block = LaunchConfiguration("run_refine_block")
     run_set_task_move = LaunchConfiguration("run_set_task_move")
@@ -109,7 +108,7 @@ def generate_launch_description():
     declare_perception_mode = DeclareLaunchArgument(
         "perception_mode",
         default_value="IDLE",
-        description="Startup world-model perception mode",
+        description="Deprecated; ignored. Processing is triggered by run_pose_estimation.",
     )
     declare_run_scene_discovery = DeclareLaunchArgument(
         "run_scene_discovery",
@@ -152,7 +151,6 @@ def generate_launch_description():
             "bag": bag_path,
             "use_sim_time": use_sim_time,
             "rviz": rviz,
-            "perception_mode": perception_mode,
         }.items(),
     )
 

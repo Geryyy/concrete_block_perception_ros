@@ -327,8 +327,8 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
 {
   WorldModelConfig cfg;
 
-  cfg.pipeline_mode_str = node.declare_parameter<std::string>("pipeline_mode", "full");
-  cfg.perception_mode_str = node.declare_parameter<std::string>("perception_mode", "FULL");
+  (void)node.declare_parameter<std::string>("pipeline_mode", "full");
+  (void)node.declare_parameter<std::string>("perception_mode", "IDLE");
   cfg.min_fitness = node.declare_parameter<double>("min_fitness", 0.3);
   cfg.max_rmse = node.declare_parameter<double>("max_rmse", 0.05);
   cfg.object_class = node.declare_parameter<std::string>("object_class", "concrete_block");

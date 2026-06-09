@@ -151,7 +151,7 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
         cbpwm::oneShotModeToString(run_request.mode),
         seg_detection_count);
 
-      if (debug_detection_overlay_enabled_ && det_debug_pub_) {
+      if (debug_detection_overlay_enabled_.load() && det_debug_pub_) {
         publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
       }
 
@@ -359,9 +359,7 @@ void PerceptionOrchestratorNode::processFrame(
       run_request = active_one_shot_;
     }
 
-    if (run_request.mode == cbpwm::OneShotMode::kNone ||
-      pipeline_mode_ == cbpwm::PipelineMode::kIdle)
-    {
+    if (run_request.mode == cbpwm::OneShotMode::kNone) {
       resetBusy();
       return;
     }

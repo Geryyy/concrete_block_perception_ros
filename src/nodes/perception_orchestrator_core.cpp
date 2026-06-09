@@ -2,7 +2,6 @@
 
 #include "concrete_block_perception/utils/coarse_pose_utils.hpp"
 #include "concrete_block_perception/utils/img_utils.hpp"
-#include "concrete_block_perception/utils/world_model_utils.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 namespace
@@ -29,30 +28,6 @@ void PerceptionOrchestratorNode::resetPerfCounters()
     perf_total_sum_ms_ = 0;
     dropped_busy_frames_.store(0);
     dropped_sync_frames_.store(0);
-  }
-
-bool PerceptionOrchestratorNode::applyPerceptionMode(const std::string & mode)
-  {
-    cbpwm::PerceptionModeConfig config;
-    if (!cbpwm::resolvePerceptionModeConfig(mode, config)) {
-      return false;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(mode_mutex_);
-      perception_mode_ = config.perception_mode;
-      pipeline_mode_ = config.pipeline_mode;
-      resetPerfCounters();
-    }
-
-    RCLCPP_INFO(get_logger(), "%s", config.log_message);
-    return true;
-  }
-
-bool PerceptionOrchestratorNode::needsRegistration() const
-  {
-    return pipeline_mode_ == cbpwm::PipelineMode::kRegister ||
-           pipeline_mode_ == cbpwm::PipelineMode::kFull;
   }
 
 std::string PerceptionOrchestratorNode::resolveGraspedBlockId()

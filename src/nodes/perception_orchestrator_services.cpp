@@ -13,7 +13,6 @@ void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool 
     one_shot_last_success_ = success;
     one_shot_last_message_ = message;
     one_shot_cv_.notify_all();
-    (void)applyPerceptionMode("IDLE");
   }
 
 void PerceptionOrchestratorNode::handleRunPoseEstimation(
@@ -54,11 +53,7 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
       active_one_shot_ = run_request;
     }
 
-    {
-      std::lock_guard<std::mutex> lock(mode_mutex_);
-      debug_detection_overlay_enabled_ = request->enable_debug;
-      pipeline_mode_ = cbpwm::PipelineMode::kFull;
-    }
+    debug_detection_overlay_enabled_ = request->enable_debug;
 
     RCLCPP_INFO(
       get_logger(),
@@ -79,7 +74,6 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
         if (active_one_shot_.sequence == run_request.sequence) {
           active_one_shot_ = OneShotRequest{};
         }
-        (void)applyPerceptionMode("IDLE");
         response->success = false;
         response->message = "Timed out waiting for one-shot result.";
         response->blocks = latestWorldSnapshot();
@@ -90,25 +84,6 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
     }
 
     response->blocks = latestWorldSnapshot();
-  }
-
-void PerceptionOrchestratorNode::handleSetMode(
-    const std::shared_ptr<SetModeSrv::Request> request,
-    std::shared_ptr<SetModeSrv::Response> response)
-  {
-    if (!applyPerceptionMode(request->mode)) {
-      response->success = false;
-      response->message = "Unsupported mode: " + request->mode;
-      return;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(mode_mutex_);
-      debug_detection_overlay_enabled_ = request->enable_debug;
-    }
-
-    response->success = true;
-    response->message = "Mode applied: " + request->mode;
   }
 
 void PerceptionOrchestratorNode::handleGetCoarseBlocks(

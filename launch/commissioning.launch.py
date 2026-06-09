@@ -13,7 +13,7 @@ def generate_launch_description():
     stage_arg = DeclareLaunchArgument(
         "stage",
         default_value="segment",
-        description="Commissioning stage: segment | track | register | full",
+        description="Commissioning nodes to start: segment | track | register | full",
     )
 
     model_arg = DeclareLaunchArgument(
@@ -167,7 +167,6 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
-                        "pipeline_mode": LaunchConfiguration("stage"),
                     },
                 ],
                 output="screen",

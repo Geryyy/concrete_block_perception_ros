@@ -268,8 +268,8 @@ void PerceptionOrchestratorNode::processRefineGraspedWithFkRoi(
     cfg.roi_cfg.segmentation_timeout_s = refine_grasped_segmentation_timeout_s_;
     cfg.roi_cfg.use_black_bg = refine_grasped_use_black_bg_;
     cfg.roi_cfg.blur_kernel_size = refine_grasped_blur_kernel_size_;
-    cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_;
-    cfg.debug_refine_grasped_roi_input_enabled = debug_refine_grasped_roi_input_enabled_;
+    cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
+    cfg.debug_refine_grasped_roi_input_enabled = debug_refine_grasped_roi_input_enabled_.load();
     cfg.object_class = object_class_;
     cfg.pose_fusion.enabled = refine_grasped_pose_fusion_.enabled;
     cfg.pose_fusion.mode = refine_grasped_pose_fusion_.mode;
@@ -317,7 +317,7 @@ bool PerceptionOrchestratorNode::tryProcessRefineBlockWithPoseRoi(
     cfg.roi_cfg.use_black_bg = refine_block_use_black_bg_;
     cfg.roi_cfg.blur_kernel_size = refine_block_blur_kernel_size_;
     cfg.refine_target_max_distance_m = runtime_cfg_.refine_target_max_distance_m;
-    cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_;
+    cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
 
     auto rt = makeRefineFlowRuntime();
     rt.upsert_block = [this, &run_request, cloud](Block & block, std::string & assigned_id, std::string & reason) {

@@ -31,10 +31,12 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "pipeline_mode",
                 default_value="full",
+                description="Deprecated; ignored.",
             ),
             DeclareLaunchArgument(
                 "perception_mode",
                 default_value="IDLE",
+                description="Deprecated; ignored.",
             ),
             DeclareLaunchArgument(
                 "params_file",
@@ -49,8 +51,6 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "calib_yaml": calib_yaml,
-                        "pipeline_mode": LaunchConfiguration("pipeline_mode"),
-                        "perception_mode": LaunchConfiguration("perception_mode"),
                     },
                 ],
                 remappings=[
@@ -67,7 +67,9 @@ def generate_launch_description():
                 ],
                 additional_env={
                     "RCUTILS_COLORIZED_OUTPUT": "1",
-                    "RCUTILS_CONSOLE_OUTPUT_FORMAT": "\033[33m[{name}] [{severity}] {message}\033[0m",
+                    "RCUTILS_CONSOLE_OUTPUT_FORMAT": (
+                        "\033[33m[{name}] [{severity}] {message}\033[0m"
+                    ),
                 },
                 output="screen",
             ),

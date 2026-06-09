@@ -1,7 +1,6 @@
 #include "concrete_block_perception/nodes/perception_orchestrator_node.hpp"
 
 #include "concrete_block_perception/world_model/config_loader.hpp"
-#include "concrete_block_perception/utils/world_model_utils.hpp"
 
 #include <tf2/LinearMath/Quaternion.h>
 
@@ -14,9 +13,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     action_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     auto startup = cbpwm::loadWorldModelConfig(*this);
     cbpwm::normalizeWorldModelConfig(get_logger(), startup);
-    pipeline_mode_ = cbpwm::parsePipelineMode(startup.pipeline_mode_str);
-    const std::string & pipeline_mode_str = startup.pipeline_mode_str;
-    const std::string & perception_mode_str = startup.perception_mode_str;
     runtime_cfg_.min_fitness = startup.min_fitness;
     runtime_cfg_.max_rmse = startup.max_rmse;
     object_class_ = startup.object_class;
@@ -92,10 +88,10 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       perf_log_every_n_frames_ = 1;
     }
 
-    if (debug_detection_overlay_enabled_) {
+    if (debug_detection_overlay_enabled_.load()) {
       det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>("debug/detection_overlay", 1);
     }
-    if (debug_refine_grasped_roi_input_enabled_) {
+    if (debug_refine_grasped_roi_input_enabled_.load()) {
       refine_grasped_roi_input_pub_ =
         create_publisher<sensor_msgs::msg::Image>("debug/refine_grasped_roi_input", 1);
     }
@@ -187,34 +183,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
       this, "register_block", action_client_cb_group_);
 
-    if (!applyPerceptionMode(perception_mode_str)) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Unsupported startup perception_mode '%s'; keeping pipeline_mode '%s'.",
-        perception_mode_str.c_str(),
-        pipeline_mode_str.c_str());
-    }
-
-    if (pipeline_mode_ != cbpwm::PipelineMode::kIdle &&
-      !segment_client_->wait_for_service(std::chrono::seconds(2)))
-    {
-      RCLCPP_WARN(get_logger(), "Segmentation service not available at startup.");
-    }
-
-    if (needsRegistration() &&
-      !action_client_->wait_for_action_server(std::chrono::seconds(2)))
-    {
-      RCLCPP_WARN(get_logger(), "Registration action not available at startup.");
-    }
-
-    set_mode_srv_ = create_service<SetModeSrv>(
-      "~/set_mode",
-      std::bind(
-        &PerceptionOrchestratorNode::handleSetMode,
-        this,
-        std::placeholders::_1,
-        std::placeholders::_2));
-
     get_coarse_srv_ = create_service<GetCoarseSrv>(
       "~/get_coarse_blocks",
       std::bind(
@@ -270,9 +238,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | pipeline_mode=%s | perception_mode=%s",
-      cbpwm::pipelineModeToString(pipeline_mode_),
-      cbpwm::perceptionModeToString(perception_mode_));
+      "PerceptionOrchestratorNode ready | trigger_policy=ON_DEMAND_NEXT_FRAME");
     if (refine_grasped_use_fk_roi_) {
       WM_LOG(
         get_logger(),

@@ -33,8 +33,6 @@ struct StaticSceneObjectConfig
 
 struct WorldModelConfig
 {
-  std::string pipeline_mode_str{"full"};
-  std::string perception_mode_str{"FULL"};
   double min_fitness{0.3};
   double max_rmse{0.05};
   std::string object_class{"concrete_block"};
