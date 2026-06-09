@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
+#include <array>
 
 #include "concrete_block_perception/utils/io_utils.hpp"
 #include "pcd_block_estimation/utils.hpp"
@@ -14,6 +15,25 @@ using namespace open3d;
 
 namespace concrete_block_perception
 {
+namespace
+{
+
+Eigen::Vector3d debug_cutout_color(size_t index)
+{
+  static const std::array<Eigen::Vector3d, 8> kColors = {
+    Eigen::Vector3d{1.0, 0.0, 0.0},
+    Eigen::Vector3d{0.0, 0.75, 1.0},
+    Eigen::Vector3d{1.0, 0.55, 0.0},
+    Eigen::Vector3d{0.85, 0.0, 1.0},
+    Eigen::Vector3d{1.0, 1.0, 0.0},
+    Eigen::Vector3d{0.0, 0.25, 1.0},
+    Eigen::Vector3d{1.0, 0.0, 0.45},
+    Eigen::Vector3d{0.0, 1.0, 0.6},
+  };
+  return kColors[index % kColors.size()];
+}
+
+}  // namespace
 
 RosDebugHelpers::RosDebugHelpers(
   rclcpp::Node & node,
@@ -89,7 +109,7 @@ void RosDebugHelpers::publishVisualization(
 
   // ---------------- Scene (red) ----------------
   geometry::PointCloud scene_vis = scene;
-  scene_vis.PaintUniformColor({1.0, 0.0, 0.0});
+  scene_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
 
   debug_cutout_pub_->publish(
     open3d_to_pointcloud2_colored(

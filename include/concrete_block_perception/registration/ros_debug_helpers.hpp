@@ -9,6 +9,7 @@
 #include <opencv2/core.hpp>
 #include <open3d/Open3D.h>
 #include <Eigen/Dense>
+#include <atomic>
 #include <vector>
 #include <string>
 
@@ -63,6 +64,7 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   std::vector<pcd_block::TemplateData> templates_;
+  std::atomic_size_t cutout_color_index_{0};
 };
 
 } // namespace concrete_block_perception
