@@ -1,5 +1,6 @@
 from launch.actions import IncludeLaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.actions import SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathSubstitution
 from launch_ros.actions import Node
@@ -7,6 +8,16 @@ from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution
 
 from launch import LaunchDescription
+import glob
+import os
+
+
+def cuda_library_path():
+    paths = glob.glob("/usr/local/lib/python3.10/dist-packages/nvidia/*/lib")
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    if existing:
+        paths.append(existing)
+    return ":".join(paths)
 
 
 def generate_launch_description():
@@ -98,6 +109,7 @@ def generate_launch_description():
             world_model_overlay_arg,
             start_world_model_arg,
             start_processing_stack_arg,
+            SetEnvironmentVariable("LD_LIBRARY_PATH", cuda_library_path()),
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",

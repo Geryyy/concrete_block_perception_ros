@@ -24,6 +24,9 @@
   <depend>ros2_yolos_cpp</depend>
   <depend>concrete_block_perception_interfaces</depend>
 
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>sam2_segmentation</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>

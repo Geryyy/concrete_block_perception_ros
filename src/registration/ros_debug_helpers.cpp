@@ -61,9 +61,10 @@ RosDebugHelpers::RosDebugHelpers(
   }
 
   if (publish_debug_mask_) {
+    const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     debug_mask_pub_ =
       node_.create_publisher<sensor_msgs::msg::Image>(
-      "debug/segmentation_mask", 1);
+      "debug/segmentation_mask", debug_image_qos);
   }
 
   if (dump_enabled_) {
