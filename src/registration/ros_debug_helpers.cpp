@@ -61,9 +61,10 @@ RosDebugHelpers::RosDebugHelpers(
   }
 
   if (publish_debug_mask_) {
+    const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     debug_mask_pub_ =
       node_.create_publisher<sensor_msgs::msg::Image>(
-      "debug/segmentation_mask", 1);
+      "debug/segmentation_mask", debug_image_qos);
   }
 
   if (dump_enabled_) {
@@ -162,6 +163,23 @@ void RosDebugHelpers::publishVisualization(
 
     tf_broadcaster_->sendTransform(tf);
   }
+}
+
+void RosDebugHelpers::publishCutoutCloud(
+  const sensor_msgs::msg::PointCloud2 & cloud_source,
+  const open3d::geometry::PointCloud & cutout_world)
+{
+  if (!publish_debug_cutout_ || !debug_cutout_pub_) {
+    return;
+  }
+
+  geometry::PointCloud cutout_vis = cutout_world;
+  cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+  debug_cutout_pub_->publish(
+    open3d_to_pointcloud2_colored(
+      cutout_vis,
+      world_frame_,
+      rclcpp::Time(cloud_source.header.stamp)));
 }
 
 void RosDebugHelpers::dumpInput(

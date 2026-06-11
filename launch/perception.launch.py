@@ -1,5 +1,6 @@
 from launch.actions import IncludeLaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.actions import SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathSubstitution
 from launch_ros.actions import Node
@@ -7,6 +8,16 @@ from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution
 
 from launch import LaunchDescription
+import glob
+import os
+
+
+def cuda_library_path():
+    paths = glob.glob("/usr/local/lib/python3.10/dist-packages/nvidia/*/lib")
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    if existing:
+        paths.append(existing)
+    return ":".join(paths)
 
 
 def generate_launch_description():
@@ -44,6 +55,11 @@ def generate_launch_description():
         "pipeline_mode",
         default_value="full",
         description="Deprecated; ignored. Processing is triggered by run_pose_estimation.",
+    )
+    perception_mode_arg = DeclareLaunchArgument(
+        "perception_mode",
+        default_value="IDLE",
+        description="World-model perception mode: IDLE or CONTINUOUS.",
     )
     world_model_overlay_arg = DeclareLaunchArgument(
         "world_model_overlay_params_file",
@@ -95,9 +111,11 @@ def generate_launch_description():
             gpu_arg,
             sim_time_arg,
             mode_arg,
+            perception_mode_arg,
             world_model_overlay_arg,
             start_world_model_arg,
             start_processing_stack_arg,
+            SetEnvironmentVariable("LD_LIBRARY_PATH", cuda_library_path()),
             Node(
                 package="cloudini_ros",
                 executable="cloudini_topic_converter",
@@ -173,6 +191,7 @@ def generate_launch_description():
                     LaunchConfiguration("world_model_overlay_params_file"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "perception_mode": LaunchConfiguration("perception_mode"),
                     },
                 ],
                 output="screen",
@@ -194,10 +213,21 @@ def generate_launch_description():
                     # Debug topics
                     # =========================
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
+                    ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
+                    ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
                     ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
+                    ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
+                    ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
+                    ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
+                    ("timing/continuous_registration_ms", "/cbp/timing/continuous_registration_ms"),
+                    ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
+                    ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
+                    ("timing/continuous_detections", "/cbp/timing/continuous_detections"),
+                    ("timing/continuous_accepted", "/cbp/timing/continuous_accepted"),
+                    ("timing/continuous_rejected", "/cbp/timing/continuous_rejected"),
                 ],
             ),
         ]

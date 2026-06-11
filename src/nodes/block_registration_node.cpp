@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "concrete_block_perception_interfaces/action/register_block.hpp"
+#include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
 #include "concrete_block_perception_interfaces/srv/register_block.hpp"
 #include "concrete_block_perception/utils/io_utils.hpp"
 
@@ -33,6 +34,7 @@ class BlockRegistrationNode : public rclcpp::Node
   using GoalHandleRegisterBlock =
     rclcpp_action::ServerGoalHandle<RegisterBlockAction>;
   using RegisterBlockSrv = concrete_block_perception_interfaces::srv::RegisterBlock;
+  using ExtractMaskCutoutSrv = concrete_block_perception_interfaces::srv::ExtractMaskCutout;
 
 public:
   BlockRegistrationNode()
@@ -89,6 +91,13 @@ public:
       "register_block_pose",
       std::bind(
         &BlockRegistrationNode::handle_register_service,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+    cutout_service_ = create_service<ExtractMaskCutoutSrv>(
+      "extract_mask_cutout",
+      std::bind(
+        &BlockRegistrationNode::handle_cutout_service,
         this,
         std::placeholders::_1,
         std::placeholders::_2));
@@ -188,6 +197,71 @@ private:
     const float total_ms =
       std::chrono::duration<float, std::milli>(end_time - start_time).count();
     RCLCPP_INFO(get_logger(), "Registration completed in %.2f ms", total_ms);
+  }
+
+  void handle_cutout_service(
+    const std::shared_ptr<ExtractMaskCutoutSrv::Request> request,
+    std::shared_ptr<ExtractMaskCutoutSrv::Response> response)
+  {
+    const auto start_time = std::chrono::steady_clock::now();
+
+    if (request->cloud.data.empty() || request->mask.data.empty()) {
+      response->success = false;
+      response->reason = "empty cloud or mask";
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped tf_cloud;
+    if (!lookupCloudTransform(request->cloud, tf_cloud)) {
+      response->success = false;
+      response->reason = "cloud transform lookup failed";
+      return;
+    }
+
+    auto scene_ptr = pointcloud2_to_open3d(request->cloud);
+    if (!scene_ptr || scene_ptr->points_.empty()) {
+      response->success = false;
+      response->reason = "empty scene cloud";
+      return;
+    }
+
+    cv::Mat mask;
+    try {
+      mask = cv_bridge::toCvCopy(request->mask, "mono8")->image;
+    } catch (const std::exception & e) {
+      response->success = false;
+      response->reason = std::string("mask conversion failed: ") + e.what();
+      return;
+    }
+
+    RegistrationInput input;
+    input.scene = *scene_ptr;
+    input.mask = mask;
+    input.T_world_cloud = transformToEigen(tf_cloud);
+
+    open3d::geometry::PointCloud cutout_world;
+    std::string reason;
+    if (!pipeline_->extractMaskCutout(input, cutout_world, reason)) {
+      response->success = false;
+      response->reason = reason;
+      return;
+    }
+
+    response->cutout_cloud = open3d_to_pointcloud2_colored(
+      cutout_world,
+      config_.world_frame,
+      rclcpp::Time(request->cloud.header.stamp));
+    response->success = true;
+    response->reason = reason;
+    debug_->publishCutoutCloud(request->cloud, cutout_world);
+
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start_time).count();
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Cutout-only service: points=%zu elapsed=%ld ms",
+      cutout_world.points_.size(),
+      elapsed_ms);
   }
 
   rclcpp_action::GoalResponse
@@ -404,6 +478,7 @@ private:
 
   rclcpp_action::Server<RegisterBlockAction>::SharedPtr action_server_;
   rclcpp::Service<RegisterBlockSrv>::SharedPtr register_service_;
+  rclcpp::Service<ExtractMaskCutoutSrv>::SharedPtr cutout_service_;
   rclcpp::CallbackGroup::SharedPtr action_cb_group_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;

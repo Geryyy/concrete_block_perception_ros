@@ -37,6 +37,10 @@ public:
     int template_index,
     const Eigen::Matrix4d & T);
 
+  void publishCutoutCloud(
+    const sensor_msgs::msg::PointCloud2 & cloud_source,
+    const open3d::geometry::PointCloud & cutout_world);
+
   void dumpInput(
     const concrete_block_perception_interfaces::action::RegisterBlock::Goal & goal);
 

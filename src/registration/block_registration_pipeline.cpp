@@ -171,6 +171,35 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
   return out;
 }
 
+bool BlockRegistrationPipeline::extractMaskCutout(
+  const RegistrationInput & in,
+  geometry::PointCloud & cutout_world,
+  std::string & reason)
+{
+  geometry::PointCloud cutout;
+
+  if (!computeCutout(in.scene, in.mask, cutout)) {
+    reason = "no points selected from mask";
+    RCLCPP_WARN(logger_, "Cutout failed: %s.", reason.c_str());
+    return false;
+  }
+
+  if (verbose_logs_) {
+    RCLCPP_INFO(logger_, "Cutout-only extracted: points=%zu", cutout.points_.size());
+  }
+
+  preprocess(cutout, in.T_world_cloud);
+  if (cutout.points_.empty()) {
+    reason = "all points removed during preprocess";
+    RCLCPP_WARN(logger_, "Cutout-only rejected: %s.", reason.c_str());
+    return false;
+  }
+
+  cutout_world = std::move(cutout);
+  reason = "cutout extracted";
+  return true;
+}
+
 bool BlockRegistrationPipeline::computeCutout(
   const geometry::PointCloud & scene,
   const cv::Mat & mask,
