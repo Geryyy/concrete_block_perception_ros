@@ -86,6 +86,10 @@ public:
     bool verbose_logs);
 
   RegistrationOutput run(const RegistrationInput & in);
+  bool extractMaskCutout(
+    const RegistrationInput & in,
+    open3d::geometry::PointCloud & cutout_world,
+    std::string & reason);
 
 private:
   bool computeCutout(

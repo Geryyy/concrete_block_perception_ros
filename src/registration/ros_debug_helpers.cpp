@@ -165,6 +165,23 @@ void RosDebugHelpers::publishVisualization(
   }
 }
 
+void RosDebugHelpers::publishCutoutCloud(
+  const sensor_msgs::msg::PointCloud2 & cloud_source,
+  const open3d::geometry::PointCloud & cutout_world)
+{
+  if (!publish_debug_cutout_ || !debug_cutout_pub_) {
+    return;
+  }
+
+  geometry::PointCloud cutout_vis = cutout_world;
+  cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+  debug_cutout_pub_->publish(
+    open3d_to_pointcloud2_colored(
+      cutout_vis,
+      world_frame_,
+      rclcpp::Time(cloud_source.header.stamp)));
+}
+
 void RosDebugHelpers::dumpInput(
   const concrete_block_perception_interfaces::action::RegisterBlock::Goal & goal)
 {
