@@ -42,6 +42,11 @@ def generate_launch_description():
         default_value="true",
         description="Use simulation clock.",
     )
+    perception_mode_arg = DeclareLaunchArgument(
+        "perception_mode",
+        default_value="IDLE",
+        description="World-model perception mode: IDLE or CONTINUOUS.",
+    )
     world_model_overlay_arg = DeclareLaunchArgument(
         "world_model_overlay_params_file",
         default_value=PathJoinSubstitution(
@@ -69,6 +74,7 @@ def generate_launch_description():
             "labels_path": LaunchConfiguration("labels_path"),
             "use_gpu": LaunchConfiguration("use_gpu"),
             "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "perception_mode": LaunchConfiguration("perception_mode"),
             "world_model_overlay_params_file": LaunchConfiguration("world_model_overlay_params_file"),
         }.items(),
     )
@@ -114,6 +120,7 @@ def generate_launch_description():
             labels_arg,
             use_gpu_arg,
             use_sim_time_arg,
+            perception_mode_arg,
             world_model_overlay_arg,
             yolo_conf_arg,
             yolo_timing_arg,
