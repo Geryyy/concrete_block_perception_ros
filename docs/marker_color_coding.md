@@ -2,6 +2,14 @@
 
 This is the state-to-color mapping used by `world_model_node` for block markers.
 
+> The shared renderer `concrete_block_viz_common` (`block_markers` lib +
+> `block_marker_node`) reproduces this same scheme for any `BlockArray` producer
+> (live world model, future compare node). The **goal-wall ghost** published by
+> `concrete_block_assembly_planning/wall_setup_node` uses a deliberately distinct
+> convention so it never reads as a real block:
+> translucent **green** (`a=0.30`) = reachable & collision-free,
+> translucent **red** (`a=0.45`) = unreachable or colliding.
+
 ## Mapping
 - `TASK_REMOVED` -> **red** (`r=0.9, g=0.1, b=0.1`)
 - `TASK_PLACED` -> **cyan** (`r=0.1, g=0.9, b=0.9`)
