@@ -172,7 +172,7 @@ private:
       return;
     }
     response->cutout_cloud = open3d_to_pointcloud2_colored(
-      output.debug_scene,
+      output.debug_cleaned_cutout,
       config_.world_frame,
       rclcpp::Time(request->cloud.header.stamp));
     if (!output.success) {
@@ -182,9 +182,11 @@ private:
     }
 
     debug_->publishMask(request->mask, mask);
-    debug_->publishVisualization(
+    debug_->publishRegistrationDebug(
       request->cloud,
-      output.debug_scene,
+      output.debug_mask_cutout,
+      output.debug_cleaned_cutout,
+      output.debug_registration_cloud,
       output.template_index,
       output.T_world_block);
 
@@ -240,8 +242,9 @@ private:
     input.T_world_cloud = transformToEigen(tf_cloud);
 
     open3d::geometry::PointCloud cutout_world;
+    open3d::geometry::PointCloud mask_cutout_world;
     std::string reason;
-    if (!pipeline_->extractMaskCutout(input, cutout_world, reason)) {
+    if (!pipeline_->extractMaskCutout(input, cutout_world, reason, &mask_cutout_world)) {
       response->success = false;
       response->reason = reason;
       return;
@@ -253,7 +256,7 @@ private:
       rclcpp::Time(request->cloud.header.stamp));
     response->success = true;
     response->reason = reason;
-    debug_->publishCutoutCloud(request->cloud, cutout_world);
+    debug_->publishCutoutDebug(request->cloud, mask_cutout_world, cutout_world);
 
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - start_time).count();
@@ -354,9 +357,11 @@ private:
 
     // Always publish debug cutout/template attempt for offline diagnosis, even on failure.
     debug_->publishMask(goal->mask, mask);
-    debug_->publishVisualization(
+    debug_->publishRegistrationDebug(
       goal->cloud,
-      output.debug_scene,
+      output.debug_mask_cutout,
+      output.debug_cleaned_cutout,
+      output.debug_registration_cloud,
       output.template_index,
       output.T_world_block);
 
@@ -469,7 +474,10 @@ private:
     if (!config_.dump_enabled || !config_.dump_failure_package || !debug_) {
       return;
     }
-    debug_->dumpFailurePackage(cloud, mask, output.debug_scene, output.failure_stage, output.failure_reason);
+    const auto & dump_cloud =
+      output.debug_registration_cloud.points_.empty() ?
+      output.debug_cleaned_cutout : output.debug_registration_cloud;
+    debug_->dumpFailurePackage(cloud, mask, dump_cloud, output.failure_stage, output.failure_reason);
   }
 
   BlockRegistrationConfig config_;

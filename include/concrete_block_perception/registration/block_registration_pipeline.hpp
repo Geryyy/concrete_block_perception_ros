@@ -68,8 +68,10 @@ struct RegistrationOutput
   std::string failure_stage;
   std::string failure_reason;
 
-  // optional debug
-  open3d::geometry::PointCloud debug_scene;
+  // optional debug clouds, named by pipeline stage
+  open3d::geometry::PointCloud debug_mask_cutout;
+  open3d::geometry::PointCloud debug_cleaned_cutout;
+  open3d::geometry::PointCloud debug_registration_cloud;
 };
 
 class BlockRegistrationPipeline
@@ -89,7 +91,8 @@ public:
   bool extractMaskCutout(
     const RegistrationInput & in,
     open3d::geometry::PointCloud & cutout_world,
-    std::string & reason);
+    std::string & reason,
+    open3d::geometry::PointCloud * mask_cutout_world = nullptr);
 
 private:
   bool computeCutout(

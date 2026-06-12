@@ -38,7 +38,9 @@ Three executables:
 | `/cbp/block_world_model` | `BlockArray` | out | Persistent block world model (all known blocks + poses + status) |
 | `/cbp/block_world_model_markers` | `MarkerArray` | out | RViz visualization: block cubes + axes arrows |
 | `/cbp/debug/detection_overlay` | `sensor_msgs/Image` | debug | YOLO mask overlay on camera image |
-| `/cbp/debug/registration_cutout` | `sensor_msgs/PointCloud2` | debug | ICP scene cloud (after mask cutout + preprocess) |
+| `/cbp/debug/registration_mask_cutout` | `sensor_msgs/PointCloud2` | debug | Raw mask-selected cloud before registration preprocessing |
+| `/cbp/debug/registration_cleaned_cutout` | `sensor_msgs/PointCloud2` | debug | Mask cutout after preprocessing; input to plane-based global registration |
+| `/cbp/debug/registration_plane_cloud` | `sensor_msgs/PointCloud2` | debug | Plane inliers selected by global registration and used as the local ICP scene |
 | `/cbp/debug/registration_template` | `sensor_msgs/PointCloud2` | debug | Matched template cloud at ICP result pose |
 | `/cbp/debug/registration_mask` | `sensor_msgs/Image` | debug | Binary segmentation mask passed to ICP |
 | `/cbp/debug/refine_grasped_roi_input` | `sensor_msgs/Image` | debug | Cropped ROI image sent to YOLO for REFINE_GRASPED |

@@ -31,14 +31,17 @@ public:
     const sensor_msgs::msg::Image & header_source,
     const cv::Mat & mask);
 
-  void publishVisualization(
+  void publishRegistrationDebug(
     const sensor_msgs::msg::PointCloud2 & cloud_source,
-    const open3d::geometry::PointCloud & scene,
+    const open3d::geometry::PointCloud & mask_cutout,
+    const open3d::geometry::PointCloud & cleaned_cutout,
+    const open3d::geometry::PointCloud & registration_cloud,
     int template_index,
     const Eigen::Matrix4d & T);
 
-  void publishCutoutCloud(
+  void publishCutoutDebug(
     const sensor_msgs::msg::PointCloud2 & cloud_source,
+    const open3d::geometry::PointCloud & mask_cutout_world,
     const open3d::geometry::PointCloud & cutout_world);
 
   void dumpInput(
@@ -61,7 +64,9 @@ private:
   bool dump_enabled_{false};
   std::string dump_dir_;
 
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_cutout_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_mask_cutout_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_cleaned_cutout_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_registration_cloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_template_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_mask_pub_;
 

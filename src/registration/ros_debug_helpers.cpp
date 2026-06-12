@@ -48,13 +48,21 @@ RosDebugHelpers::RosDebugHelpers(
 {
   if (publish_debug_cutout_) {
     const auto debug_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-    debug_cutout_pub_ =
+    debug_mask_cutout_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/cutout_cloud", debug_qos);
+      "debug/registration_mask_cutout", debug_qos);
+
+    debug_cleaned_cutout_pub_ =
+      node_.create_publisher<sensor_msgs::msg::PointCloud2>(
+      "debug/registration_cleaned_cutout", debug_qos);
+
+    debug_registration_cloud_pub_ =
+      node_.create_publisher<sensor_msgs::msg::PointCloud2>(
+      "debug/registration_plane_cloud", debug_qos);
 
     debug_template_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/template_cloud", debug_qos);
+      "debug/registration_template", debug_qos);
 
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(node_);
@@ -96,27 +104,55 @@ void RosDebugHelpers::publishMask(
   debug_mask_pub_->publish(*msg);
 }
 
-void RosDebugHelpers::publishVisualization(
+void RosDebugHelpers::publishRegistrationDebug(
   const sensor_msgs::msg::PointCloud2 & cloud_source,
-  const open3d::geometry::PointCloud & scene,
+  const open3d::geometry::PointCloud & mask_cutout,
+  const open3d::geometry::PointCloud & cleaned_cutout,
+  const open3d::geometry::PointCloud & registration_cloud,
   int template_index,
   const Eigen::Matrix4d & T)
 {
-  if (!publish_debug_cutout_ || !debug_cutout_pub_) {
+  if (!publish_debug_cutout_) {
     return;
   }
 
   const rclcpp::Time stamp(cloud_source.header.stamp);
 
-  // ---------------- Scene (red) ----------------
-  geometry::PointCloud scene_vis = scene;
-  scene_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+  // ---------------- Raw mask cutout ----------------
+  if (debug_mask_cutout_pub_ && !mask_cutout.points_.empty()) {
+    geometry::PointCloud mask_cutout_vis = mask_cutout;
+    mask_cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
 
-  debug_cutout_pub_->publish(
-    open3d_to_pointcloud2_colored(
-      scene_vis,
-      world_frame_,
-      stamp));
+    debug_mask_cutout_pub_->publish(
+      open3d_to_pointcloud2_colored(
+        mask_cutout_vis,
+        world_frame_,
+        stamp));
+  }
+
+  // ---------------- Cleaned cutout ----------------
+  if (debug_cleaned_cutout_pub_ && !cleaned_cutout.points_.empty()) {
+    geometry::PointCloud cutout_vis = cleaned_cutout;
+    cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+
+    debug_cleaned_cutout_pub_->publish(
+      open3d_to_pointcloud2_colored(
+        cutout_vis,
+        world_frame_,
+        stamp));
+  }
+
+  // ---------------- Plane cloud used for registration ----------------
+  if (debug_registration_cloud_pub_ && !registration_cloud.points_.empty()) {
+    geometry::PointCloud registration_vis = registration_cloud;
+    registration_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+
+    debug_registration_cloud_pub_->publish(
+      open3d_to_pointcloud2_colored(
+        registration_vis,
+        world_frame_,
+        stamp));
+  }
 
   // ---------------- Template (green) ----------------
   if (template_index >= 0 &&
@@ -165,21 +201,35 @@ void RosDebugHelpers::publishVisualization(
   }
 }
 
-void RosDebugHelpers::publishCutoutCloud(
+void RosDebugHelpers::publishCutoutDebug(
   const sensor_msgs::msg::PointCloud2 & cloud_source,
+  const open3d::geometry::PointCloud & mask_cutout_world,
   const open3d::geometry::PointCloud & cutout_world)
 {
-  if (!publish_debug_cutout_ || !debug_cutout_pub_) {
+  if (!publish_debug_cutout_) {
     return;
   }
 
-  geometry::PointCloud cutout_vis = cutout_world;
-  cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
-  debug_cutout_pub_->publish(
-    open3d_to_pointcloud2_colored(
-      cutout_vis,
-      world_frame_,
-      rclcpp::Time(cloud_source.header.stamp)));
+  const rclcpp::Time stamp(cloud_source.header.stamp);
+  if (debug_mask_cutout_pub_ && !mask_cutout_world.points_.empty()) {
+    geometry::PointCloud mask_cutout_vis = mask_cutout_world;
+    mask_cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+    debug_mask_cutout_pub_->publish(
+      open3d_to_pointcloud2_colored(
+        mask_cutout_vis,
+        world_frame_,
+        stamp));
+  }
+
+  if (debug_cleaned_cutout_pub_ && !cutout_world.points_.empty()) {
+    geometry::PointCloud cutout_vis = cutout_world;
+    cutout_vis.PaintUniformColor(debug_cutout_color(cutout_color_index_.fetch_add(1)));
+    debug_cleaned_cutout_pub_->publish(
+      open3d_to_pointcloud2_colored(
+        cutout_vis,
+        world_frame_,
+        stamp));
+  }
 }
 
 void RosDebugHelpers::dumpInput(

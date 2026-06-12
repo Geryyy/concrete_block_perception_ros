@@ -58,8 +58,11 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       cutout.points_.size());
   }
 
+  out.debug_mask_cutout = cutout;
+  out.debug_mask_cutout.Transform(in.T_world_cloud);
+
   preprocess(cutout, in.T_world_cloud);
-  out.debug_scene = cutout;
+  out.debug_cleaned_cutout = cutout;
 
   if (verbose_logs_) {
     RCLCPP_INFO(
@@ -109,7 +112,9 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 
   const auto & icp_scene =
     glob_res.plane_cloud ? *glob_res.plane_cloud : cutout;
-  out.debug_scene = icp_scene;
+  if (glob_res.plane_cloud) {
+    out.debug_registration_cloud = *glob_res.plane_cloud;
+  }
 
   const Eigen::Vector3d * local_seed_ptr = nullptr;
   if (loc_.use_fk_translation_seed && in.has_translation_seed_world) {
@@ -157,7 +162,6 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
   out.fitness = reg.icp.fitness_;
   out.rmse = reg.icp.inlier_rmse_;
   out.template_index = reg.template_index;
-  out.debug_scene = icp_scene;
 
   if (verbose_logs_) {
     RCLCPP_INFO(
@@ -174,7 +178,8 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 bool BlockRegistrationPipeline::extractMaskCutout(
   const RegistrationInput & in,
   geometry::PointCloud & cutout_world,
-  std::string & reason)
+  std::string & reason,
+  geometry::PointCloud * mask_cutout_world)
 {
   geometry::PointCloud cutout;
 
@@ -186,6 +191,11 @@ bool BlockRegistrationPipeline::extractMaskCutout(
 
   if (verbose_logs_) {
     RCLCPP_INFO(logger_, "Cutout-only extracted: points=%zu", cutout.points_.size());
+  }
+
+  if (mask_cutout_world) {
+    *mask_cutout_world = cutout;
+    mask_cutout_world->Transform(in.T_world_cloud);
   }
 
   preprocess(cutout, in.T_world_cloud);
