@@ -36,6 +36,7 @@ struct GlobalRegistrationParams
   double max_plane_center_dist{0.6};
   bool enable_plane_clipping{false};
   bool reject_tall_vertical{true};
+  bool enable_pose_prior_fallback{false};
 };
 
 struct LocalRegistrationParams
@@ -76,6 +77,7 @@ struct RegistrationOutput
   size_t cleaned_cutout_points{0};
   size_t registration_cloud_points{0};
   bool used_pose_prior{false};
+  bool used_pose_prior_fallback{false};
   double prior_position_sigma_m{0.0};
   double prior_orientation_sigma_rad{0.0};
 

@@ -108,7 +108,22 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       glob_.enable_plane_clipping,
       glob_.reject_tall_vertical);
 
-    if (!glob_res.success) {
+    if (!glob_res.success && glob_.enable_pose_prior_fallback && in.has_pose_prior_world) {
+      glob_res.success = true;
+      glob_res.R_base = in.pose_prior_world.block<3, 3>(0, 0);
+      glob_res.center = in.pose_prior_world.block<3, 1>(0, 3);
+      glob_res.num_planes = 2;
+      glob_res.plane_cloud = std::make_shared<geometry::PointCloud>(cutout);
+      out.used_pose_prior_fallback = true;
+      if (!in.has_translation_seed_world) {
+        RCLCPP_WARN(
+          logger_,
+          "Global registration failed; using pose prior fallback without translation seed flag.");
+      }
+      RCLCPP_WARN(
+        logger_,
+        "Global registration failed; using pose prior fallback for local ICP seed.");
+    } else if (!glob_res.success) {
       RCLCPP_WARN(logger_, "Global registration failed.");
       out.failure_stage = "global_registration";
       out.failure_reason = "global registration failed";

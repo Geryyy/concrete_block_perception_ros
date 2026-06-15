@@ -49,6 +49,9 @@ registration_node:
       # Reject front planes that look TALL_VERTICAL (helps reject stacked-block fronts).
       # Set false to tolerate partial-occlusion artifacts in grasped refinement.
       reject_tall_vertical: false
+      # If plane-based global registration fails and the action provides a
+      # world-frame prior, seed local ICP from that prior instead of aborting.
+      enable_pose_prior_fallback: true
 
     # ------------------------------------------------------------
     # Local registration (ICP)
