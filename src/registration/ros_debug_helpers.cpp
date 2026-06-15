@@ -50,19 +50,23 @@ RosDebugHelpers::RosDebugHelpers(
     const auto debug_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     debug_mask_cutout_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/registration_mask_cutout", debug_qos);
+      "debug/registration/mask_cutout", debug_qos);
 
     debug_cleaned_cutout_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/registration_cleaned_cutout", debug_qos);
+      "debug/registration/cleaned_cutout", debug_qos);
 
     debug_registration_cloud_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/registration_plane_cloud", debug_qos);
+      "debug/registration/plane_cloud", debug_qos);
 
     debug_template_pub_ =
       node_.create_publisher<sensor_msgs::msg::PointCloud2>(
-      "debug/registration_template", debug_qos);
+      "debug/registration/template", debug_qos);
+
+    debug_diagnostics_pub_ =
+      node_.create_publisher<std_msgs::msg::String>(
+      "debug/registration/diagnostics", debug_qos);
 
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(node_);
@@ -72,7 +76,7 @@ RosDebugHelpers::RosDebugHelpers(
     const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     debug_mask_pub_ =
       node_.create_publisher<sensor_msgs::msg::Image>(
-      "debug/segmentation_mask", debug_image_qos);
+      "debug/registration/mask", debug_image_qos);
   }
 
   if (dump_enabled_) {
@@ -102,6 +106,34 @@ void RosDebugHelpers::publishMask(
     mask_vis).toImageMsg();
 
   debug_mask_pub_->publish(*msg);
+}
+
+void RosDebugHelpers::publishDiagnostics(
+  const RegistrationOutput & output,
+  const std::string & source)
+{
+  if (!debug_diagnostics_pub_) {
+    return;
+  }
+
+  std::ostringstream ss;
+  ss << "{"
+     << "\"source\":\"" << source << "\","
+     << "\"success\":" << (output.success ? "true" : "false") << ","
+     << "\"failure_stage\":\"" << output.failure_stage << "\","
+     << "\"failure_reason\":\"" << output.failure_reason << "\","
+     << "\"scene_points\":" << output.scene_points << ","
+     << "\"mask_cutout_points\":" << output.mask_cutout_points << ","
+     << "\"cleaned_cutout_points\":" << output.cleaned_cutout_points << ","
+     << "\"registration_cloud_points\":" << output.registration_cloud_points << ","
+     << "\"template_index\":" << output.template_index << ","
+     << "\"fitness\":" << output.fitness << ","
+     << "\"rmse\":" << output.rmse
+     << "}";
+
+  std_msgs::msg::String msg;
+  msg.data = ss.str();
+  debug_diagnostics_pub_->publish(msg);
 }
 
 void RosDebugHelpers::publishRegistrationDebug(

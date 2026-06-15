@@ -67,6 +67,10 @@ struct RegistrationOutput
   int template_index{-1};
   std::string failure_stage;
   std::string failure_reason;
+  size_t scene_points{0};
+  size_t mask_cutout_points{0};
+  size_t cleaned_cutout_points{0};
+  size_t registration_cloud_points{0};
 
   // optional debug clouds, named by pipeline stage
   open3d::geometry::PointCloud debug_mask_cutout;

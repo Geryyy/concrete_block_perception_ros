@@ -171,6 +171,7 @@ private:
       response->success = false;
       return;
     }
+    debug_->publishDiagnostics(output, "service");
     response->cutout_cloud = open3d_to_pointcloud2_colored(
       output.debug_cleaned_cutout,
       config_.world_frame,
@@ -354,6 +355,7 @@ private:
       goal_handle->abort(result);
       return;
     }
+    debug_->publishDiagnostics(output, "action");
 
     // Always publish debug cutout/template attempt for offline diagnosis, even on failure.
     debug_->publishMask(goal->mask, mask);

@@ -41,6 +41,7 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       "Registration input: scene_points=%zu",
       in.scene.points_.size());
   }
+  out.scene_points = in.scene.points_.size();
 
   geometry::PointCloud cutout;
 
@@ -60,9 +61,11 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
 
   out.debug_mask_cutout = cutout;
   out.debug_mask_cutout.Transform(in.T_world_cloud);
+  out.mask_cutout_points = cutout.points_.size();
 
   preprocess(cutout, in.T_world_cloud);
   out.debug_cleaned_cutout = cutout;
+  out.cleaned_cutout_points = cutout.points_.size();
 
   if (verbose_logs_) {
     RCLCPP_INFO(
@@ -114,6 +117,9 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     glob_res.plane_cloud ? *glob_res.plane_cloud : cutout;
   if (glob_res.plane_cloud) {
     out.debug_registration_cloud = *glob_res.plane_cloud;
+    out.registration_cloud_points = glob_res.plane_cloud->points_.size();
+  } else {
+    out.registration_cloud_points = cutout.points_.size();
   }
 
   const Eigen::Vector3d * local_seed_ptr = nullptr;

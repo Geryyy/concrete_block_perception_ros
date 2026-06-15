@@ -4,6 +4,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <opencv2/core.hpp>
@@ -14,6 +15,7 @@
 #include <string>
 
 #include "concrete_block_perception_interfaces/action/register_block.hpp"
+#include "concrete_block_perception/registration/block_registration_pipeline.hpp"
 #include "concrete_block_perception/registration/registration_config.hpp"
 #include "pcd_block_estimation/template_utils.hpp"
 
@@ -38,6 +40,10 @@ public:
     const open3d::geometry::PointCloud & registration_cloud,
     int template_index,
     const Eigen::Matrix4d & T);
+
+  void publishDiagnostics(
+    const RegistrationOutput & output,
+    const std::string & source);
 
   void publishCutoutDebug(
     const sensor_msgs::msg::PointCloud2 & cloud_source,
@@ -69,6 +75,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_registration_cloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_template_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_mask_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debug_diagnostics_pub_;
 
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 

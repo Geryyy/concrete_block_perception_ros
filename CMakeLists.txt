@@ -64,6 +64,7 @@ ament_target_dependencies(block_detection_tracking_node
   rclcpp
   sensor_msgs
   geometry_msgs
+  std_msgs
   vision_msgs
   cv_bridge
 )
