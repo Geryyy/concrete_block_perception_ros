@@ -37,6 +37,8 @@ struct GlobalRegistrationParams
   bool enable_plane_clipping{false};
   bool reject_tall_vertical{true};
   bool enable_pose_prior_fallback{false};
+  double pose_prior_fallback_max_translation_m{0.25};
+  double pose_prior_fallback_max_orientation_rad{0.80};
 };
 
 struct LocalRegistrationParams

@@ -58,6 +58,8 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<bool>("glob_reg.enable_plane_clipping", false);
   node.declare_parameter<bool>("glob_reg.reject_tall_vertical", true);
   node.declare_parameter<bool>("glob_reg.enable_pose_prior_fallback", false);
+  node.declare_parameter<double>("glob_reg.pose_prior_fallback_max_translation_m", 0.25);
+  node.declare_parameter<double>("glob_reg.pose_prior_fallback_max_orientation_rad", 0.80);
 
   node.declare_parameter<double>("loc_reg.icp_dist", 0.04);
   node.declare_parameter<bool>("loc_reg.relax_num_faces_match", false);
@@ -187,6 +189,10 @@ load_registration_config(rclcpp::Node & node)
     node.get_parameter("glob_reg.reject_tall_vertical").as_bool();
   cfg.glob.enable_pose_prior_fallback =
     node.get_parameter("glob_reg.enable_pose_prior_fallback").as_bool();
+  cfg.glob.pose_prior_fallback_max_translation_m =
+    node.get_parameter("glob_reg.pose_prior_fallback_max_translation_m").as_double();
+  cfg.glob.pose_prior_fallback_max_orientation_rad =
+    node.get_parameter("glob_reg.pose_prior_fallback_max_orientation_rad").as_double();
 
   // ------------------------------------------------------------
   // Local registration params
@@ -271,8 +277,10 @@ load_registration_config(rclcpp::Node & node)
     tpl_params.out_dir.c_str());
   RCLCPP_INFO(
     node.get_logger(),
-    "  glob_reg: pose_prior_fallback=%s",
-    cfg.glob.enable_pose_prior_fallback ? "true" : "false");
+    "  glob_reg: pose_prior_fallback=%s fallback_gate=[%.3f m %.3f rad]",
+    cfg.glob.enable_pose_prior_fallback ? "true" : "false",
+    cfg.glob.pose_prior_fallback_max_translation_m,
+    cfg.glob.pose_prior_fallback_max_orientation_rad);
   RCLCPP_INFO(
     node.get_logger(),
     "  loc_reg: icp_dist=%.3f relax_num_faces_match=%s use_fk_translation_seed=%s p2p_fallback=%s multipliers=%zu",

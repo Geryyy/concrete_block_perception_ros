@@ -52,6 +52,9 @@ registration_node:
       # If plane-based global registration fails and the action provides a
       # world-frame prior, seed local ICP from that prior instead of aborting.
       enable_pose_prior_fallback: true
+      # Reject prior-fallback ICP if it drifts too far from the trusted prior.
+      pose_prior_fallback_max_translation_m: 0.25
+      pose_prior_fallback_max_orientation_rad: 0.80
 
     # ------------------------------------------------------------
     # Local registration (ICP)

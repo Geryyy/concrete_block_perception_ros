@@ -1,6 +1,7 @@
 #include "concrete_block_perception/registration/block_registration_pipeline.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <unordered_map>
 
@@ -9,6 +10,19 @@ using namespace pcd_block;
 
 namespace concrete_block_perception
 {
+namespace
+{
+
+double rotationDistanceRad(
+  const Eigen::Matrix3d & a,
+  const Eigen::Matrix3d & b)
+{
+  const Eigen::Matrix3d delta = a.transpose() * b;
+  const double cos_angle = std::clamp((delta.trace() - 1.0) * 0.5, -1.0, 1.0);
+  return std::acos(cos_angle);
+}
+
+}  // namespace
 
 BlockRegistrationPipeline::BlockRegistrationPipeline(
   const Eigen::Matrix4d & T_P_C,
@@ -179,6 +193,30 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
     out.failure_stage = "local_icp";
     out.failure_reason = reg.failure_reason;
     return out;
+  }
+
+  if (out.used_pose_prior_fallback) {
+    const double translation_delta =
+      (reg.icp.transformation_.block<3, 1>(0, 3) -
+      in.pose_prior_world.block<3, 1>(0, 3)).norm();
+    const double orientation_delta =
+      rotationDistanceRad(
+      in.pose_prior_world.block<3, 3>(0, 0),
+      reg.icp.transformation_.block<3, 3>(0, 0));
+    if (translation_delta > glob_.pose_prior_fallback_max_translation_m ||
+      orientation_delta > glob_.pose_prior_fallback_max_orientation_rad)
+    {
+      RCLCPP_WARN(
+        logger_,
+        "Pose-prior fallback rejected: translation_delta=%.3f m orientation_delta=%.3f rad limits=[%.3f m %.3f rad]",
+        translation_delta,
+        orientation_delta,
+        glob_.pose_prior_fallback_max_translation_m,
+        glob_.pose_prior_fallback_max_orientation_rad);
+      out.failure_stage = "pose_prior_gate";
+      out.failure_reason = "pose prior fallback exceeded motion gate";
+      return out;
+    }
   }
 
   out.success = true;
