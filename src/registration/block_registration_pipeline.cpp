@@ -42,6 +42,9 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       in.scene.points_.size());
   }
   out.scene_points = in.scene.points_.size();
+  out.used_pose_prior = in.has_pose_prior_world;
+  out.prior_position_sigma_m = in.prior_position_sigma_m;
+  out.prior_orientation_sigma_rad = in.prior_orientation_sigma_rad;
 
   geometry::PointCloud cutout;
 

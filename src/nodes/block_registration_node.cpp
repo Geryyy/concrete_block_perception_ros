@@ -3,6 +3,7 @@
 
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <tf2_ros/transform_listener.h>
@@ -11,6 +12,7 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 #include "concrete_block_perception_interfaces/action/register_block.hpp"
@@ -112,6 +114,7 @@ private:
     const sensor_msgs::msg::PointCloud2 & cloud,
     const sensor_msgs::msg::Image & mask_msg,
     const std::string & object_class,
+    const RegisterBlockAction::Goal * action_goal,
     bool allow_fk_seed,
     cv::Mat & mask_cv,
     RegistrationOutput & output)
@@ -133,6 +136,30 @@ private:
     input.scene = *scene_ptr;
     input.mask = mask_cv;
     input.T_world_cloud = transformToEigen(tf_cloud);
+
+    if (action_goal && action_goal->use_pose_prior) {
+      Eigen::Matrix4d prior_pose_world = Eigen::Matrix4d::Identity();
+      if (poseToEigen(action_goal->prior_pose, prior_pose_world)) {
+        input.has_pose_prior_world = true;
+        input.pose_prior_world = prior_pose_world;
+        input.prior_position_sigma_m = action_goal->prior_position_sigma_m;
+        input.prior_orientation_sigma_rad = action_goal->prior_orientation_sigma_rad;
+        input.has_translation_seed_world = true;
+        input.translation_seed_world = prior_pose_world.block<3, 1>(0, 3);
+        if (config_.verbose_logs) {
+          RCLCPP_INFO(
+            get_logger(),
+            "Using action pose prior: position=[%.3f %.3f %.3f] sigma=[%.3f m %.3f rad]",
+            input.translation_seed_world.x(),
+            input.translation_seed_world.y(),
+            input.translation_seed_world.z(),
+            input.prior_position_sigma_m,
+            input.prior_orientation_sigma_rad);
+        }
+      } else {
+        RCLCPP_WARN(get_logger(), "Ignoring invalid action pose prior quaternion.");
+      }
+    }
 
     if (allow_fk_seed && config_.local.use_fk_translation_seed && shouldUseFkSeedForGoal(object_class)) {
       if (!resolveFkPoseSeed(cloud.header, input.fk_pose_seed_world)) {
@@ -166,7 +193,7 @@ private:
     cv::Mat mask;
     RegistrationOutput output;
     if (!runPipelineFromRosInputs(
-        request->cloud, request->mask, request->object_class, false, mask, output))
+        request->cloud, request->mask, request->object_class, nullptr, false, mask, output))
     {
       response->success = false;
       return;
@@ -350,7 +377,7 @@ private:
     // Run registration
     publish_feedback("registration", 0.6f);
     RegistrationOutput output;
-    if (!runPipelineFromRosInputs(goal->cloud, goal->mask, goal->object_class, true, mask, output)) {
+    if (!runPipelineFromRosInputs(goal->cloud, goal->mask, goal->object_class, goal.get(), true, mask, output)) {
       result->success = false;
       goal_handle->abort(result);
       return;
@@ -403,6 +430,34 @@ private:
       get_logger(),
       "Registration completed in %.2f ms",
       total_ms);
+  }
+
+  bool poseToEigen(
+    const geometry_msgs::msg::Pose & pose,
+    Eigen::Matrix4d & out_pose_world) const
+  {
+    Eigen::Quaterniond q(
+      pose.orientation.w,
+      pose.orientation.x,
+      pose.orientation.y,
+      pose.orientation.z);
+
+    if (!std::isfinite(pose.position.x) || !std::isfinite(pose.position.y) ||
+      !std::isfinite(pose.position.z) ||
+      !std::isfinite(q.w()) || !std::isfinite(q.x()) ||
+      !std::isfinite(q.y()) || !std::isfinite(q.z()) ||
+      q.norm() < 1.0e-6)
+    {
+      return false;
+    }
+
+    q.normalize();
+    out_pose_world = Eigen::Matrix4d::Identity();
+    out_pose_world.block<3, 3>(0, 0) = q.toRotationMatrix();
+    out_pose_world(0, 3) = pose.position.x;
+    out_pose_world(1, 3) = pose.position.y;
+    out_pose_world(2, 3) = pose.position.z;
+    return true;
   }
 
   bool lookupCloudTransform(

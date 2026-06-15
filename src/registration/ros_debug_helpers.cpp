@@ -126,6 +126,9 @@ void RosDebugHelpers::publishDiagnostics(
      << "\"mask_cutout_points\":" << output.mask_cutout_points << ","
      << "\"cleaned_cutout_points\":" << output.cleaned_cutout_points << ","
      << "\"registration_cloud_points\":" << output.registration_cloud_points << ","
+     << "\"used_pose_prior\":" << (output.used_pose_prior ? "true" : "false") << ","
+     << "\"prior_position_sigma_m\":" << output.prior_position_sigma_m << ","
+     << "\"prior_orientation_sigma_rad\":" << output.prior_orientation_sigma_rad << ","
      << "\"template_index\":" << output.template_index << ","
      << "\"fitness\":" << output.fitness << ","
      << "\"rmse\":" << output.rmse

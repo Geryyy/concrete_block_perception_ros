@@ -54,6 +54,10 @@ struct RegistrationInput
   Eigen::Matrix4d T_world_cloud;
   bool has_translation_seed_world{false};
   Eigen::Vector3d translation_seed_world{Eigen::Vector3d::Zero()};
+  bool has_pose_prior_world{false};
+  Eigen::Matrix4d pose_prior_world{Eigen::Matrix4d::Identity()};
+  double prior_position_sigma_m{0.0};
+  double prior_orientation_sigma_rad{0.0};
   bool has_fk_pose_seed{false};
   Eigen::Matrix4d fk_pose_seed_world{Eigen::Matrix4d::Identity()};
 };
@@ -71,6 +75,9 @@ struct RegistrationOutput
   size_t mask_cutout_points{0};
   size_t cleaned_cutout_points{0};
   size_t registration_cloud_points{0};
+  bool used_pose_prior{false};
+  double prior_position_sigma_m{0.0};
+  double prior_orientation_sigma_rad{0.0};
 
   // optional debug clouds, named by pipeline stage
   open3d::geometry::PointCloud debug_mask_cutout;
