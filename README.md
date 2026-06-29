@@ -29,6 +29,17 @@ Three executables:
 | `block_registration_node` | `block_registration.yaml` | Action server; runs ICP registration pipeline (cutout → preprocess → global reg → local ICP) |
 | `world_model_node` | `world_model.yaml` | Orchestrates the full pipeline; owns the persistent block world model; exposes all BT-facing services |
 
+## Dependencies & interactions
+
+| Direction | Package / lib | Via |
+|---|---|---|
+| **out** | [concrete_block_perception_interfaces](../concrete_block_perception_interfaces/) | `TrackedDetectionArray`, `RegisterBlock` action, `TrackDetections` / `SegmentAtPoint` / `ExtractMaskCutout` srv |
+| **lib** | `ros2_yolos_cpp` | YOLO / ONNX segmentor service |
+| **lib** | `sam2_segmentation` | optional SAM2 mask source |
+| **consumed by** | [concrete_block_world_model](../concrete_block_world_model/) | `world_model_node` subscribes to the detections and calls the `RegisterBlock` action |
+
+> The `world_model_node` in the architecture diagram is the orchestrator and is **built by [concrete_block_world_model](../concrete_block_world_model/)**, not this package — here we build only `block_detection_tracking_node` and `block_registration_node`. This package emits the *transient* perception interfaces; the *persistent* `BlockArray` is owned by the world model. Note this package does **not** depend on `concrete_block_world_model_interfaces`.
+
 ## Input / Output topics
 
 | Topic | Type | Direction | Description |
