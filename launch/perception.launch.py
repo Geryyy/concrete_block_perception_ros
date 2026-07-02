@@ -79,6 +79,11 @@ def generate_launch_description():
         default_value="true",
         description="Whether to start world_model_node",
     )
+    calib_yaml_arg = DeclareLaunchArgument(
+        "calib_yaml",
+        default_value="calib_zed2i_to_seyond_new_sensor_head.yaml",
+        description="Calibration YAML in concrete_block_perception/config.",
+    )
 
     block_detection_tracking_params = PathJoinSubstitution(
         [
@@ -115,6 +120,7 @@ def generate_launch_description():
             world_model_overlay_arg,
             start_world_model_arg,
             start_processing_stack_arg,
+            calib_yaml_arg,
             SetEnvironmentVariable("LD_LIBRARY_PATH", cuda_library_path()),
             Node(
                 package="cloudini_ros",
@@ -171,7 +177,10 @@ def generate_launch_description():
                 package="concrete_block_perception",
                 executable="block_registration_node",
                 name="registration_node",
-                parameters=[block_registration_params],
+                parameters=[
+                    block_registration_params,
+                    {"calib_yaml": LaunchConfiguration("calib_yaml")},
+                ],
                 remappings=[
                     ("debug/registration/mask_cutout", "/cbp/debug/registration/mask_cutout"),
                     ("debug/registration/cleaned_cutout", "/cbp/debug/registration/cleaned_cutout"),

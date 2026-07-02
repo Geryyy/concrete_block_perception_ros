@@ -57,7 +57,7 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<std::string>("world_frame", "world");
   node.declare_parameter<std::string>(
     "calib_yaml",
-    "calib_zed2i_to_seyond.yaml");
+    "calib_zed2i_to_seyond_new_sensor_head.yaml");
 
   node.declare_parameter<std::string>("template.dir", "templates");
   node.declare_parameter<std::string>(

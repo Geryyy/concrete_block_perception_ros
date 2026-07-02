@@ -20,6 +20,7 @@ def generate_launch_description():
     rviz = LaunchConfiguration("rviz")
     bag_path = LaunchConfiguration("bag")
     world_model_params = LaunchConfiguration("world_model_params")
+    calib_yaml = LaunchConfiguration("calib_yaml")
 
     # -----------------------
     # Launch arguments
@@ -68,6 +69,11 @@ def generate_launch_description():
         default_value="IDLE",
         description="Deprecated; ignored. Processing is triggered by run_pose_estimation.",
     )
+    declare_calib_yaml = DeclareLaunchArgument(
+        "calib_yaml",
+        default_value="calib_zed2i_to_seyond_old_sensor_head.yaml",
+        description="Calibration YAML in concrete_block_perception/config.",
+    )
 
     # -----------------------
     # Perception pipeline
@@ -81,6 +87,7 @@ def generate_launch_description():
         launch_arguments={
             "use_sim_time": use_sim_time,
             "start_world_model": "false",
+            "calib_yaml": calib_yaml,
         }.items(),
     )
 
@@ -144,6 +151,7 @@ def generate_launch_description():
             declare_block_detection_tracking_params,
             declare_world_model_params,
             declare_perception_mode,
+            declare_calib_yaml,
             perception_launch,
             rosbag_nodes_launch,
             world_node_launch,

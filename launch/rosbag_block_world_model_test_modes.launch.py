@@ -82,6 +82,7 @@ def generate_launch_description():
     run_refine_grasped = LaunchConfiguration("run_refine_grasped")
     refine_block_id = LaunchConfiguration("refine_block_id")
     task_move_block_id = LaunchConfiguration("task_move_block_id")
+    calib_yaml = LaunchConfiguration("calib_yaml")
 
     declare_bag = DeclareLaunchArgument(
         "bag",
@@ -140,6 +141,11 @@ def generate_launch_description():
         default_value="wm_block_1",
         description="Block id set to TASK_MOVE before REFINE_GRASPED",
     )
+    declare_calib_yaml = DeclareLaunchArgument(
+        "calib_yaml",
+        default_value="calib_zed2i_to_seyond_old_sensor_head.yaml",
+        description="Calibration YAML in concrete_block_perception/config.",
+    )
 
     pipeline_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -151,6 +157,7 @@ def generate_launch_description():
             "bag": bag_path,
             "use_sim_time": use_sim_time,
             "rviz": rviz,
+            "calib_yaml": calib_yaml,
         }.items(),
     )
 
@@ -193,6 +200,7 @@ def generate_launch_description():
             declare_run_refine_grasped,
             declare_refine_block_id,
             declare_task_move_block_id,
+            declare_calib_yaml,
             pipeline_launch,
             scene_discovery_call,
             refine_block_call,

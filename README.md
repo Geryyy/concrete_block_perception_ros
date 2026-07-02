@@ -172,9 +172,11 @@ The relative measurement approach (REFINE_GRASPED vs. REFINE_BLOCK on an already
 | File | Node | Key parameters |
 |---|---|---|
 | `concrete_block_world_model/config/world_model.yaml` | world_model_node | block dimensions, association thresholds, registration gates, REFINE_GRASPED FK/ROI config, static scene objects |
-| `config/block_registration.yaml` | block_registration_node | ICP dist, global reg thresholds, FK seed TCP frame + offset, plane clipping |
+| `config/block_registration.yaml` | block_registration_node | calibration YAML selection, ICP dist, global reg thresholds, FK seed TCP frame + offset, plane clipping |
 | `config/block_detection_tracking.yaml` | block_detection_tracking_node | YOLO confidence threshold, tracking params |
-| `config/calib_zed2i_to_seyond.yaml` | registration_node + world_model_node | Extrinsic T_camera_lidar and camera intrinsics K |
+| `config/calib_zed2i_to_seyond_new_sensor_head.yaml` | block_registration_node | Live-crane ZED2i/Seyond extrinsic and camera intrinsics K |
+| `config/calib_zed2i_to_seyond_old_sensor_head.yaml` | block_registration_node | Old sensor-head calibration for historical rosbags |
+| `config/calib_zed2i_to_seyond.yaml` | block_registration_node | Legacy alias kept for compatibility |
 
 All parameters are loaded at startup via ROS 2 parameter files. Changes take effect on next launch (symlink install; no rebuild needed for YAML-only changes).
 
@@ -182,7 +184,7 @@ All parameters are loaded at startup via ROS 2 parameter files. Changes take eff
 
 | File | Purpose |
 |---|---|
-| `perception.launch.py` | **Primary** — starts processing components plus `concrete_block_world_model/world_model_node`. Args: `pipeline_mode`, `use_gpu`, `use_sim_time`, `start_processing_stack`, `start_world_model`. |
+| `perception.launch.py` | **Primary** — starts processing components plus `concrete_block_world_model/world_model_node`. Args: `pipeline_mode`, `use_gpu`, `use_sim_time`, `start_processing_stack`, `start_world_model`, `calib_yaml`. |
 | `rosbag_block_world_model_test_modes.launch.py` | Development/testing — replays a bag and optionally triggers SCENE_DISCOVERY / REFINE_BLOCK / REFINE_GRASPED via launch args. See `README_PERCEPTION_MODES.md` for all args. |
 | `block_registration.launch.py` | Registration node only (standalone ICP testing). |
 | `detection_tracking.launch.py` | Detection + tracking node only. |
@@ -194,6 +196,7 @@ All parameters are loaded at startup via ROS 2 parameter files. Changes take eff
 ```bash
 ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch.py \
   bag:=/path/to/your/bag \
+  calib_yaml:=calib_zed2i_to_seyond_old_sensor_head.yaml \
   run_scene_discovery:=true \
   run_set_task_move:=true \
   task_move_block_id:=wm_block_1 \
@@ -202,8 +205,25 @@ ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch
 
 ## Calibration
 
-Sensor fusion requires a calibrated extrinsic between the ZED2i camera and the Seyond LiDAR. The calibration file `config/calib_zed2i_to_seyond.yaml` contains:
-- `T_P_C`: 4×4 transform from camera frame to LiDAR frame
+Sensor fusion requires a calibrated extrinsic between the ZED2i camera and the Seyond LiDAR. The calibration files contain:
+- `T_P_C`: 4×4 transform from camera frame to point-cloud frame (`T_seyond_zed2i_left_optical`)
 - `K`: 3×3 camera intrinsic matrix
 
-Re-run the extrinsic calibration procedure if the sensor rig is remounted.
+The live crane defaults to `calib_zed2i_to_seyond_new_sensor_head.yaml`:
+
+```bash
+ros2 launch concrete_block_perception perception.launch.py
+```
+
+Historical rosbags recorded with the old sensor head should override the calibration:
+
+```bash
+ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch.py \
+  bag:=/path/to/old_sensor_head_bag \
+  calib_yaml:=calib_zed2i_to_seyond_old_sensor_head.yaml
+```
+
+The new-sensor-head file is derived from the current `sensor_description`
+`blackfly_rotated` to `seyond` transform. Re-run the extrinsic calibration
+procedure and update `calib_zed2i_to_seyond_new_sensor_head.yaml` if the
+relative sensor rig is remounted.
