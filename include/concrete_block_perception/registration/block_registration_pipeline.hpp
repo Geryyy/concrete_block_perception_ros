@@ -27,7 +27,7 @@ struct PreprocessingParams
 
 struct GlobalRegistrationParams
 {
-  static constexpr int MAX_PLANES = 2;
+  int max_planes{2};
   Eigen::Vector3d Z_WORLD{0, 0, 1};
   double dist_thresh{0.02};
   int min_inliers{100};

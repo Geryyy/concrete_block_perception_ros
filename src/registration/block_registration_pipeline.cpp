@@ -115,7 +115,7 @@ BlockRegistrationPipeline::run(const RegistrationInput & in)
       glob_.Z_WORLD,
       glob_.angle_thresh_top,
       glob_.angle_thresh_front,
-      glob_.MAX_PLANES,
+      glob_.max_planes,
       glob_.dist_thresh,
       glob_.min_inliers,
       glob_.max_plane_center_dist,

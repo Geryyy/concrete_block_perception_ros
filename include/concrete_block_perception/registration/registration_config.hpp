@@ -11,6 +11,20 @@
 namespace concrete_block_perception
 {
 
+struct GripperBoxConfig
+{
+  std::string frame;
+  Eigen::Vector3d center_xyz{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d size_xyz{Eigen::Vector3d(1.4, 0.12, 0.12)};
+};
+
+struct GripperFilterConfig
+{
+  bool debug_publish_boxes{true};
+  GripperBoxConfig left_box{"K10_left_rail"};
+  GripperBoxConfig right_box{"K12_right_rail"};
+};
+
 struct BlockRegistrationConfig
 {
   std::string world_frame;
@@ -26,6 +40,7 @@ struct BlockRegistrationConfig
   bool publish_debug_cutout{true};
   bool publish_debug_mask{true};
   bool verbose_logs{true};
+  GripperFilterConfig gripper_filter;
   bool dump_enabled{false};
   bool dump_failure_package{true};
   std::string dump_dir;
