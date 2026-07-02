@@ -179,6 +179,7 @@ def generate_launch_description():
                     ("debug/registration/template", "/cbp/debug/registration/template"),
                     ("debug/registration/mask", "/cbp/debug/registration/mask"),
                     ("debug/registration/diagnostics", "/cbp/debug/registration/diagnostics"),
+                    ("debug/registration/gripper_boxes", "/cbp/debug/registration/gripper_boxes"),
                 ],
                 output="screen",
                 emulate_tty=True,

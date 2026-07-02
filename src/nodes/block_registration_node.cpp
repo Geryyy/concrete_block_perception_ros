@@ -185,6 +185,8 @@ private:
   {
     const auto start_time = std::chrono::steady_clock::now();
 
+    debug_->publishGripperBoxes(request->cloud.header);
+
     if (request->cloud.data.empty() || request->mask.data.empty()) {
       response->success = false;
       return;
@@ -234,6 +236,8 @@ private:
     std::shared_ptr<ExtractMaskCutoutSrv::Response> response)
   {
     const auto start_time = std::chrono::steady_clock::now();
+
+    debug_->publishGripperBoxes(request->cloud.header);
 
     if (request->cloud.data.empty() || request->mask.data.empty()) {
       response->success = false;
@@ -373,6 +377,7 @@ private:
 
     // Dump input
     debug_->dumpInput(*goal);
+    debug_->publishGripperBoxes(goal->cloud.header);
 
     // Run registration
     publish_feedback("registration", 0.6f);

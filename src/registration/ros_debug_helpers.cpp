@@ -33,6 +33,32 @@ Eigen::Vector3d debug_cutout_color(size_t index)
   return kColors[index % kColors.size()];
 }
 
+visualization_msgs::msg::Marker make_box_marker(
+  const std_msgs::msg::Header & header_source,
+  const GripperBoxConfig & box,
+  int id)
+{
+  visualization_msgs::msg::Marker marker;
+  marker.header = header_source;
+  marker.header.frame_id = box.frame;
+  marker.ns = "registration_gripper_boxes";
+  marker.id = id;
+  marker.type = visualization_msgs::msg::Marker::CUBE;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose.position.x = box.center_xyz.x();
+  marker.pose.position.y = box.center_xyz.y();
+  marker.pose.position.z = box.center_xyz.z();
+  marker.pose.orientation.w = 1.0;
+  marker.scale.x = box.size_xyz.x();
+  marker.scale.y = box.size_xyz.y();
+  marker.scale.z = box.size_xyz.z();
+  marker.color.r = 1.0f;
+  marker.color.g = 0.55f;
+  marker.color.b = 0.0f;
+  marker.color.a = 0.35f;
+  return marker;
+}
+
 }  // namespace
 
 RosDebugHelpers::RosDebugHelpers(
@@ -42,6 +68,7 @@ RosDebugHelpers::RosDebugHelpers(
   world_frame_(cfg.world_frame),
   publish_debug_cutout_(cfg.publish_debug_cutout),
   publish_debug_mask_(cfg.publish_debug_mask),
+  gripper_filter_(cfg.gripper_filter),
   dump_enabled_(cfg.dump_enabled),
   dump_dir_(cfg.dump_dir),
   templates_(cfg.templates)   // IMPORTANT FIX
@@ -79,6 +106,13 @@ RosDebugHelpers::RosDebugHelpers(
       "debug/registration/mask", debug_image_qos);
   }
 
+  if (gripper_filter_.debug_publish_boxes) {
+    const auto debug_marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+    debug_gripper_boxes_pub_ =
+      node_.create_publisher<visualization_msgs::msg::MarkerArray>(
+      "debug/registration/gripper_boxes", debug_marker_qos);
+  }
+
   if (dump_enabled_) {
     std::filesystem::create_directories(dump_dir_);
     RCLCPP_WARN(
@@ -86,6 +120,28 @@ RosDebugHelpers::RosDebugHelpers(
       "Dump ENABLED → writing data to %s",
       dump_dir_.c_str());
   }
+}
+
+void RosDebugHelpers::publishGripperBoxes(
+  const std_msgs::msg::Header & header_source)
+{
+  if (!gripper_filter_.debug_publish_boxes || !debug_gripper_boxes_pub_) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray markers;
+  visualization_msgs::msg::Marker clear;
+  clear.header = header_source;
+  clear.header.frame_id = world_frame_;
+  clear.ns = "registration_gripper_boxes";
+  clear.id = 0;
+  clear.type = visualization_msgs::msg::Marker::CUBE;
+  clear.action = visualization_msgs::msg::Marker::DELETEALL;
+  markers.markers.push_back(clear);
+
+  markers.markers.push_back(make_box_marker(header_source, gripper_filter_.left_box, 1));
+  markers.markers.push_back(make_box_marker(header_source, gripper_filter_.right_box, 2));
+  debug_gripper_boxes_pub_->publish(markers);
 }
 
 void RosDebugHelpers::publishMask(

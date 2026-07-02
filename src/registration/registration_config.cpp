@@ -11,6 +11,30 @@ using namespace pcd_block;
 
 namespace concrete_block_perception
 {
+namespace
+{
+
+Eigen::Vector3d vector3_from_parameter(
+  rclcpp::Node & node,
+  const std::string & name,
+  const Eigen::Vector3d & fallback)
+{
+  const auto values = node.get_parameter(name).as_double_array();
+  if (values.size() < 3) {
+    RCLCPP_WARN(
+      node.get_logger(),
+      "Parameter '%s' expected 3 entries, got %zu. Using fallback [%.3f %.3f %.3f].",
+      name.c_str(),
+      values.size(),
+      fallback.x(),
+      fallback.y(),
+      fallback.z());
+    return fallback;
+  }
+  return Eigen::Vector3d(values[0], values[1], values[2]);
+}
+
+}  // namespace
 
 BlockRegistrationConfig
 load_registration_config(rclcpp::Node & node)
@@ -51,6 +75,7 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<int>("preproc.cluster_min_size", 100);
 
   node.declare_parameter<double>("glob_reg.dist_thresh", 0.02);
+  node.declare_parameter<int>("glob_reg.max_planes", 2);
   node.declare_parameter<int>("glob_reg.min_inliers", 100);
   node.declare_parameter<double>("glob_reg.angle_thresh_top_degree", 30.0);
   node.declare_parameter<double>("glob_reg.angle_thresh_front_degree", 15.0);
@@ -73,6 +98,22 @@ load_registration_config(rclcpp::Node & node)
   node.declare_parameter<bool>("debug.publish_cutout", true);
   node.declare_parameter<bool>("debug.publish_mask", true);
   node.declare_parameter<bool>("debug.verbose_logs", true);
+
+  node.declare_parameter<bool>("gripper_filter.debug_publish_boxes", true);
+  node.declare_parameter<std::string>("gripper_filter.boxes.left.frame", "K10_left_rail");
+  node.declare_parameter<std::vector<double>>(
+    "gripper_filter.boxes.left.center_xyz",
+    {0.0, 0.0, 0.0});
+  node.declare_parameter<std::vector<double>>(
+    "gripper_filter.boxes.left.size_xyz",
+    {1.4, 0.12, 0.12});
+  node.declare_parameter<std::string>("gripper_filter.boxes.right.frame", "K12_right_rail");
+  node.declare_parameter<std::vector<double>>(
+    "gripper_filter.boxes.right.center_xyz",
+    {0.0, 0.0, 0.0});
+  node.declare_parameter<std::vector<double>>(
+    "gripper_filter.boxes.right.size_xyz",
+    {1.4, 0.12, 0.12});
 
   node.declare_parameter<bool>("dump.enable", false);
   node.declare_parameter<bool>("dump.failure_package", true);
@@ -162,6 +203,9 @@ load_registration_config(rclcpp::Node & node)
   cfg.glob.dist_thresh =
     node.get_parameter("glob_reg.dist_thresh").as_double();
 
+  cfg.glob.max_planes =
+    node.get_parameter("glob_reg.max_planes").as_int();
+
   cfg.glob.min_inliers =
     node.get_parameter("glob_reg.min_inliers").as_int();
 
@@ -244,6 +288,33 @@ load_registration_config(rclcpp::Node & node)
   cfg.verbose_logs =
     node.get_parameter("debug.verbose_logs").as_bool();
 
+  cfg.gripper_filter.debug_publish_boxes =
+    node.get_parameter("gripper_filter.debug_publish_boxes").as_bool();
+  cfg.gripper_filter.left_box.frame =
+    node.get_parameter("gripper_filter.boxes.left.frame").as_string();
+  cfg.gripper_filter.left_box.center_xyz =
+    vector3_from_parameter(
+    node,
+    "gripper_filter.boxes.left.center_xyz",
+    Eigen::Vector3d::Zero());
+  cfg.gripper_filter.left_box.size_xyz =
+    vector3_from_parameter(
+    node,
+    "gripper_filter.boxes.left.size_xyz",
+    Eigen::Vector3d(1.4, 0.12, 0.12));
+  cfg.gripper_filter.right_box.frame =
+    node.get_parameter("gripper_filter.boxes.right.frame").as_string();
+  cfg.gripper_filter.right_box.center_xyz =
+    vector3_from_parameter(
+    node,
+    "gripper_filter.boxes.right.center_xyz",
+    Eigen::Vector3d::Zero());
+  cfg.gripper_filter.right_box.size_xyz =
+    vector3_from_parameter(
+    node,
+    "gripper_filter.boxes.right.size_xyz",
+    Eigen::Vector3d(1.4, 0.12, 0.12));
+
   cfg.dump_enabled =
     node.get_parameter("dump.enable").as_bool();
   cfg.dump_failure_package =
@@ -277,7 +348,8 @@ load_registration_config(rclcpp::Node & node)
     tpl_params.out_dir.c_str());
   RCLCPP_INFO(
     node.get_logger(),
-    "  glob_reg: pose_prior_fallback=%s fallback_gate=[%.3f m %.3f rad]",
+    "  glob_reg: max_planes=%d pose_prior_fallback=%s fallback_gate=[%.3f m %.3f rad]",
+    cfg.glob.max_planes,
     cfg.glob.enable_pose_prior_fallback ? "true" : "false",
     cfg.glob.pose_prior_fallback_max_translation_m,
     cfg.glob.pose_prior_fallback_max_orientation_rad);
@@ -289,6 +361,12 @@ load_registration_config(rclcpp::Node & node)
     cfg.local.use_fk_translation_seed ? "true" : "false",
     cfg.local.enable_point_to_point_fallback ? "true" : "false",
     cfg.local.icp_dist_multipliers.size());
+  RCLCPP_INFO(
+    node.get_logger(),
+    "  gripper_filter: debug_boxes=%s left_frame=%s right_frame=%s",
+    cfg.gripper_filter.debug_publish_boxes ? "true" : "false",
+    cfg.gripper_filter.left_box.frame.c_str(),
+    cfg.gripper_filter.right_box.frame.c_str());
 
   return cfg;
 }

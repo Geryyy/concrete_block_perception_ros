@@ -35,8 +35,11 @@ registration_node:
     glob_reg:
       # Distance threshold for plane inliers [m]
       dist_thresh: 0.02
+      # Number of RANSAC plane candidates to extract before selecting the best top/front pair.
+      # Set to 2 for the previous tuned behavior.
+      max_planes: 5
       # Minimum number of inliers per plane
-      min_inliers: 100
+      min_inliers: 40
       # Maximum angle (deg) between top-plane normal and world Z
       angle_thresh_top_degree: 30.0
       # Maximum tilt (deg) of a front/side-plane normal away from horizontal.
@@ -88,6 +91,20 @@ registration_node:
       publish_mask: true
       # Stage-level registration logs (cutout/preprocess/global/local) for diagnosis.
       verbose_logs: true
+
+    gripper_filter:
+      # Visualization-only rail boxes for calibrating future gripper point removal.
+      # Disabled for current rosbags because they use the old gripper joint/frame naming.
+      debug_publish_boxes: false
+      boxes:
+        left:
+          frame: "K10_left_rail"
+          center_xyz: [0.0, 0.0, 0.0]
+          size_xyz: [1.4, 0.12, 0.12]
+        right:
+          frame: "K12_right_rail"
+          center_xyz: [0.0, 0.0, 0.0]
+          size_xyz: [1.4, 0.12, 0.12]
 
     # dump goal inputs (mask, cloud) into dump dir for offline processing / development
     dump:
