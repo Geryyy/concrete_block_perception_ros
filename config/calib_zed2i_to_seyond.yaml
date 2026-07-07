@@ -1,3 +1,10 @@
+# Historical ZED2i/Seyond calibration for old rosbags.
+#
+# Matches the ZED2i left optical frame to Seyond transform derived from:
+# - epsilon_crane_description fe987778550f41e0746327aec9a6f64265681cfe
+# - sensor_description zed2i_left_to_livox and livox_to_seyond_robin
+#
+# T is T_seyond_zed2i_left_optical, i.e. camera frame -> point-cloud frame.
 K:
 - 555.0
 - 0.0

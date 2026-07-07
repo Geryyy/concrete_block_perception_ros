@@ -1,7 +1,7 @@
 registration_node:
   ros__parameters:
 
-    calib_yaml: calib_zed2i_to_seyond_new_sensor_head.yaml
+    calib_yaml: calib_blackfly_to_seyond.yaml
     world_frame: world
     # ------------------------------------------------------------
     # Calibration & templates

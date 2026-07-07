@@ -143,7 +143,7 @@ def generate_launch_description():
     )
     declare_calib_yaml = DeclareLaunchArgument(
         "calib_yaml",
-        default_value="calib_zed2i_to_seyond_old_sensor_head.yaml",
+        default_value="calib_zed2i_to_seyond.yaml",
         description="Calibration YAML in concrete_block_perception/config.",
     )
 

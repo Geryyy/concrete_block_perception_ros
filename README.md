@@ -1,6 +1,6 @@
 # concrete_block_perception
 
-ROS 2 Humble package for 6-DOF pose estimation of concrete blocks from a synchronized ZED2i camera + Seyond LiDAR sensor pair. Outputs a persistent world model of detected blocks, used by the BT-based pick-and-place pipeline.
+ROS 2 Humble package for 6-DOF pose estimation of concrete blocks from a synchronized Blackfly camera + Seyond LiDAR sensor pair. Outputs a persistent world model of detected blocks, used by the BT-based pick-and-place pipeline.
 
 ## Architecture
 
@@ -174,9 +174,8 @@ The relative measurement approach (REFINE_GRASPED vs. REFINE_BLOCK on an already
 | `concrete_block_world_model/config/world_model.yaml` | world_model_node | block dimensions, association thresholds, registration gates, REFINE_GRASPED FK/ROI config, static scene objects |
 | `config/block_registration.yaml` | block_registration_node | calibration YAML selection, ICP dist, global reg thresholds, FK seed TCP frame + offset, plane clipping |
 | `config/block_detection_tracking.yaml` | block_detection_tracking_node | YOLO confidence threshold, tracking params |
-| `config/calib_zed2i_to_seyond_new_sensor_head.yaml` | block_registration_node | Live-crane Blackfly/Seyond extrinsic and camera intrinsics K |
-| `config/calib_zed2i_to_seyond_old_sensor_head.yaml` | block_registration_node | Old sensor-head calibration for historical rosbags |
-| `config/calib_zed2i_to_seyond.yaml` | block_registration_node | Legacy alias kept for compatibility |
+| `config/calib_blackfly_to_seyond.yaml` | block_registration_node | Live-crane Blackfly/Seyond extrinsic and camera intrinsics |
+| `config/calib_zed2i_to_seyond.yaml` | block_registration_node | Old ZED2i/Seyond calibration for historical rosbags |
 
 All parameters are loaded at startup via ROS 2 parameter files. Changes take effect on next launch (symlink install; no rebuild needed for YAML-only changes).
 
@@ -196,7 +195,7 @@ All parameters are loaded at startup via ROS 2 parameter files. Changes take eff
 ```bash
 ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch.py \
   bag:=/path/to/your/bag \
-  calib_yaml:=calib_zed2i_to_seyond_old_sensor_head.yaml \
+  calib_yaml:=calib_zed2i_to_seyond.yaml \
   run_scene_discovery:=true \
   run_set_task_move:=true \
   task_move_block_id:=wm_block_1 \
@@ -209,7 +208,7 @@ Sensor fusion requires a calibrated extrinsic between the camera and the Seyond 
 - `T_P_C`: 4x4 transform from camera frame to point-cloud frame
 - `K`: 3×3 camera intrinsic matrix
 
-The live crane defaults to `calib_zed2i_to_seyond_new_sensor_head.yaml`:
+The live crane defaults to `calib_blackfly_to_seyond.yaml`:
 
 ```bash
 ros2 launch concrete_block_perception perception.launch.py
@@ -220,10 +219,11 @@ Historical rosbags recorded with the old sensor head should override the calibra
 ```bash
 ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch.py \
   bag:=/path/to/old_sensor_head_bag \
-  calib_yaml:=calib_zed2i_to_seyond_old_sensor_head.yaml
+  calib_yaml:=calib_zed2i_to_seyond.yaml
 ```
 
-The new-sensor-head file is derived from the current `sensor_description`
-`blackfly_rotated` to `seyond` transform. Re-run the extrinsic calibration
-procedure and update `calib_zed2i_to_seyond_new_sensor_head.yaml` if the
-relative sensor rig is remounted.
+The live calibration uses the current `sensor_description`
+`blackfly_rotated` to `seyond` transform and the live
+`/blackfly_rotated/camera_info` intrinsics. Re-run the extrinsic and camera
+calibration procedure and update `calib_blackfly_to_seyond.yaml` if the
+relative sensor rig or camera settings change.

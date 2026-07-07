@@ -12,7 +12,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "calib_yaml",
-                default_value="calib_zed2i_to_seyond_new_sensor_head.yaml",
+                default_value="calib_blackfly_to_seyond.yaml",
                 description="Calibration YAML in concrete_block_perception/config.",
             ),
             Node(
