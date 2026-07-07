@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     image_topic_arg = DeclareLaunchArgument(
         "image_topic",
-        default_value="/zed2i/warped/left/image_rect_color/image_raw",
+        default_value="/blackfly_rotated/image_rect",
         description="Raw RGB image topic consumed by SAM2 video.",
     )
     detections_topic_arg = DeclareLaunchArgument(

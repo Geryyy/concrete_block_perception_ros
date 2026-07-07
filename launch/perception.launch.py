@@ -122,35 +122,6 @@ def generate_launch_description():
             start_processing_stack_arg,
             calib_yaml_arg,
             SetEnvironmentVariable("LD_LIBRARY_PATH", cuda_library_path()),
-            Node(
-                package="cloudini_ros",
-                executable="cloudini_topic_converter",
-                name="cloudini_topic_converter",
-                parameters=[
-                    {
-                        "compressing": False,
-                        "topic_input": "/seyond_points/compressed",
-                        "topic_output": "/seyond_points",
-                    }
-                ],
-                arguments=["--ros-args", "--log-level", "WARN"],
-                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
-            ),
-            Node(
-                package="image_transport",
-                executable="republish",
-                arguments=[
-                    "compressed",
-                    "raw",
-                    "--ros-args",
-                    "--remap",
-                    "in/compressed:=/zed2i/warped/left/image_rect_color/compressed",
-                    "--remap",
-                    "out:=/zed2i/warped/left/image_rect_color/image_raw",
-                ],
-                output="screen",
-                condition=IfCondition(LaunchConfiguration("start_processing_stack")),
-            ),
             IncludeLaunchDescription(
                 PathSubstitution(FindPackageShare("ros2_yolos_cpp"))
                 / "launch"
@@ -214,9 +185,9 @@ def generate_launch_description():
                     # Inputs
                     # =========================
                     # Image input (synced with cloud)
-                    ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
+                    ("image", "/blackfly_rotated/image_rect"),
                     # Point cloud input (10 Hz)
-                    ("points", "/seyond_points"),
+                    ("points", "/seyond/points"),
                     # =========================
                     # Outputs
                     # =========================

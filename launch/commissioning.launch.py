@@ -99,32 +99,6 @@ def generate_launch_description():
             gpu_arg,
             sim_time_arg,
             calib_yaml_arg,
-            Node(
-                package="cloudini_ros",
-                executable="cloudini_topic_converter",
-                name="cloudini_topic_converter",
-                parameters=[
-                    {
-                        "compressing": False,
-                        "topic_input": "/seyond_points/compressed",
-                        "topic_output": "/seyond_points",
-                    }
-                ],
-            ),
-            Node(
-                package="image_transport",
-                executable="republish",
-                arguments=[
-                    "compressed",
-                    "raw",
-                    "--ros-args",
-                    "--remap",
-                    "in/compressed:=/zed2i/warped/left/image_rect_color/compressed",
-                    "--remap",
-                    "out:=/zed2i/warped/left/image_rect_color/image_raw",
-                ],
-                output="screen",
-            ),
             IncludeLaunchDescription(
                 PathSubstitution(FindPackageShare("ros2_yolos_cpp"))
                 / "launch"
@@ -181,8 +155,8 @@ def generate_launch_description():
                 output="screen",
                 emulate_tty=True,
                 remappings=[
-                    ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
-                    ("points", "/seyond_points"),
+                    ("image", "/blackfly_rotated/image_rect"),
+                    ("points", "/seyond/points"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),

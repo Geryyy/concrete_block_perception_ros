@@ -20,7 +20,7 @@ def generate_launch_description():
     pkg_dir = FindPackageShare("concrete_block_perception")
     world_model_pkg_dir = FindPackageShare("concrete_block_world_model")
 
-    image_topic = "/zed2i/warped/left/image_rect_color/image_raw"
+    image_topic = "/blackfly_rotated/image_rect"
 
     model_arg = DeclareLaunchArgument(
         "model_path",

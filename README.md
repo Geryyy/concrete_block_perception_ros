@@ -5,10 +5,10 @@ ROS 2 Humble package for 6-DOF pose estimation of concrete blocks from a synchro
 ## Architecture
 
 ```
-ZED2i image ──────────────────────────────────────────────────────────────┐
+Blackfly image ───────────────────────────────────────────────────────────┐
                                                                            │
-  compressed ──► image_transport/republish ──► /zed2i/.../image_raw       │
-  /seyond_points/compressed ──► cloudini_topic_converter ──► /seyond_points│
+  /blackfly_rotated/image_rect                                            │
+  /seyond/points                                                          │
                                                                            ▼
 ros2_yolos_cpp (YOLO segmentor service) ◄── block_detection_tracking_node
                                                 │
@@ -44,8 +44,8 @@ Three executables:
 
 | Topic | Type | Direction | Description |
 |---|---|---|---|
-| `/zed2i/warped/left/image_rect_color/image_raw` | `sensor_msgs/Image` | in | Rectified left camera image (remapped to `image`) |
-| `/seyond_points` | `sensor_msgs/PointCloud2` | in | LiDAR point cloud (remapped to `points`) |
+| `/blackfly_rotated/image_rect` | `sensor_msgs/Image` | in | Rotated rectified Blackfly image (remapped to `image`) |
+| `/seyond/points` | `sensor_msgs/PointCloud2` | in | LiDAR point cloud (remapped to `points`) |
 | `/cbp/block_world_model` | `BlockArray` | out | Persistent block world model (all known blocks + poses + status) |
 | `/cbp/block_world_model_markers` | `MarkerArray` | out | RViz visualization: block cubes + axes arrows |
 | `/cbp/debug/detection_overlay` | `sensor_msgs/Image` | debug | YOLO mask overlay on camera image |
@@ -174,7 +174,7 @@ The relative measurement approach (REFINE_GRASPED vs. REFINE_BLOCK on an already
 | `concrete_block_world_model/config/world_model.yaml` | world_model_node | block dimensions, association thresholds, registration gates, REFINE_GRASPED FK/ROI config, static scene objects |
 | `config/block_registration.yaml` | block_registration_node | calibration YAML selection, ICP dist, global reg thresholds, FK seed TCP frame + offset, plane clipping |
 | `config/block_detection_tracking.yaml` | block_detection_tracking_node | YOLO confidence threshold, tracking params |
-| `config/calib_zed2i_to_seyond_new_sensor_head.yaml` | block_registration_node | Live-crane ZED2i/Seyond extrinsic and camera intrinsics K |
+| `config/calib_zed2i_to_seyond_new_sensor_head.yaml` | block_registration_node | Live-crane Blackfly/Seyond extrinsic and camera intrinsics K |
 | `config/calib_zed2i_to_seyond_old_sensor_head.yaml` | block_registration_node | Old sensor-head calibration for historical rosbags |
 | `config/calib_zed2i_to_seyond.yaml` | block_registration_node | Legacy alias kept for compatibility |
 
@@ -205,8 +205,8 @@ ros2 launch concrete_block_perception rosbag_block_world_model_test_modes.launch
 
 ## Calibration
 
-Sensor fusion requires a calibrated extrinsic between the ZED2i camera and the Seyond LiDAR. The calibration files contain:
-- `T_P_C`: 4×4 transform from camera frame to point-cloud frame (`T_seyond_zed2i_left_optical`)
+Sensor fusion requires a calibrated extrinsic between the camera and the Seyond LiDAR. The calibration files contain:
+- `T_P_C`: 4x4 transform from camera frame to point-cloud frame
 - `K`: 3×3 camera intrinsic matrix
 
 The live crane defaults to `calib_zed2i_to_seyond_new_sensor_head.yaml`:
