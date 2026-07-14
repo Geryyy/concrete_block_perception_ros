@@ -166,6 +166,21 @@ def generate_launch_description():
                 condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
             Node(
+                package="cloudini_ros",
+                executable="cloudini_topic_converter",
+                name="seyond_points_cloudini_decoder",
+                parameters=[
+                    {
+                        "compressing": False,
+                        "topic_input": "/seyond/points/cloudini",
+                        "topic_output": "/seyond/points",
+                    }
+                ],
+                output="screen",
+                emulate_tty=True,
+                condition=IfCondition(LaunchConfiguration("start_world_model")),
+            ),
+            Node(
                 package="concrete_block_world_model",
                 executable="world_model_node",
                 name="world_model_node",
