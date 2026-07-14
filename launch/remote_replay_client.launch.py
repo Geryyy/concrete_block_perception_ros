@@ -15,6 +15,7 @@ What stays on *this* machine is exactly the rosbag-replay helper nodes:
   * robot model publishing (robot_state_publisher x3: rigid / elastic / full)
   * the world -> elastic/world static TF
   * the crane IMU sensor/TF broadcasters
+  * q9 gripper grasp detector
   * RViz (crane_imu.rviz)
 
 Everything published here is shared with the remote peer over Cyclone DDS, and
@@ -25,6 +26,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -32,6 +34,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     rviz = LaunchConfiguration("rviz")
     tool = LaunchConfiguration("tool")
+    grasp_detector_config = LaunchConfiguration("grasp_detector_config")
 
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time",
@@ -47,6 +50,15 @@ def generate_launch_description():
         "tool",
         default_value="epsilon_7040_description",
         description="Name of the package where the tool is defined",
+    )
+    declare_grasp_detector_config = DeclareLaunchArgument(
+        "grasp_detector_config",
+        default_value=(
+            PathSubstitution(FindPackageShare("concrete_block_behavior_tree"))
+            / "config"
+            / "gripper_grasp_detector_real.yaml"
+        ),
+        description="Parameter YAML for concrete_block_behavior_tree/gripper_grasp_detector",
     )
 
     # -----------------------
@@ -65,11 +77,24 @@ def generate_launch_description():
         }.items(),
     )
 
+    grasp_detector = Node(
+        package="concrete_block_behavior_tree",
+        executable="gripper_grasp_detector",
+        name="gripper_grasp_detector",
+        output="screen",
+        parameters=[
+            grasp_detector_config,
+            {"use_sim_time": use_sim_time},
+        ],
+    )
+
     return LaunchDescription(
         [
             declare_use_sim_time,
             declare_rviz,
             declare_tool,
+            declare_grasp_detector_config,
             rosbag_nodes_launch,
+            grasp_detector,
         ]
     )
