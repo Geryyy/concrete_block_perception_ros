@@ -208,6 +208,7 @@ def generate_launch_description():
                     # =========================
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
+                    ("block_goal_markers", "/cbp/block_goal_markers"),
                     # =========================
                     # Debug topics
                     # =========================
