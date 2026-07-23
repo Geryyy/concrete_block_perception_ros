@@ -1,0 +1,10 @@
+concrete_block_detector:
+  ros__parameters:
+    detector:
+      # Full-cloud, ray-aware evidence gate.  Matches blockpose's documented
+      # scene-discovery threshold; no scene bounds or point filtering is used.
+      min_score: 0.4
+      # This bag contains free blocks resting on the fitted support surface.
+      # Reject elevated hardware-shaped hypotheses, while the portable
+      # detector default remains suitable for raised/stacked blocks.
+      cluster_max_center_z: 1.2

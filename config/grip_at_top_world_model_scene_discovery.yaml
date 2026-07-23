@@ -1,0 +1,10 @@
+world_model_node:
+  ros__parameters:
+    world_model:
+      scene_discovery:
+        # Full-cloud ray evidence keeps the visible blocks above 0.6 and the
+        # replay clutter below 0.4.  Normal registration/refinement gates stay
+        # independent of this scene-discovery admission gate.
+        min_detector_confidence: 0.40
+        # Do not merge separate detector observations in this compact scene.
+        association_max_distance_m: 0.25

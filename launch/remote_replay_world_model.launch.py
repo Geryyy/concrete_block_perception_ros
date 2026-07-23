@@ -21,6 +21,10 @@ def generate_launch_description():
     world_model_params = LaunchConfiguration("world_model_params")
     detector_params = LaunchConfiguration("detector_params")
     grasp_detector_config = LaunchConfiguration("grasp_detector_config")
+    world_model_scene_discovery_params = LaunchConfiguration(
+        "world_model_scene_discovery_params")
+    detector_scene_discovery_params = LaunchConfiguration(
+        "detector_scene_discovery_params")
 
     world_model_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -32,6 +36,7 @@ def generate_launch_description():
             "use_sim_time": use_sim_time,
             "perception_mode": "IDLE",
             "params_file": world_model_params,
+            "scene_discovery_params": world_model_scene_discovery_params,
         }.items(),
     )
 
@@ -43,6 +48,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "params_file": detector_params,
+            "scene_discovery_params": detector_scene_discovery_params,
             "points_topic": points_topic,
             "transport": "cloudini",
             "use_sim_time": use_sim_time,
@@ -78,6 +84,16 @@ def generate_launch_description():
         / "config"
         / "detector.yaml"
     )
+    default_world_model_scene_discovery_params = (
+        PathSubstitution(FindPackageShare("concrete_block_perception"))
+        / "config"
+        / "grip_at_top_world_model_scene_discovery.yaml"
+    )
+    default_detector_scene_discovery_params = (
+        PathSubstitution(FindPackageShare("concrete_block_perception"))
+        / "config"
+        / "grip_at_top_detector_scene_discovery.yaml"
+    )
 
     return LaunchDescription(
         [
@@ -89,6 +105,12 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "world_model_params", default_value=default_world_model_params),
             DeclareLaunchArgument("detector_params", default_value=default_detector_params),
+            DeclareLaunchArgument(
+                "world_model_scene_discovery_params",
+                default_value=default_world_model_scene_discovery_params),
+            DeclareLaunchArgument(
+                "detector_scene_discovery_params",
+                default_value=default_detector_scene_discovery_params),
             DeclareLaunchArgument(
                 "grasp_detector_config", default_value=default_grasp_detector_config),
             world_model_launch,
