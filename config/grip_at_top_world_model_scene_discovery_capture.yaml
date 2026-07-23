@@ -1,0 +1,15 @@
+world_model_node:
+  ros__parameters:
+    world_model:
+      scene_discovery:
+        # Keep the proven grip-at-top association settings while recording
+        # request-local raw detector observations for offline review.
+        min_detector_confidence: 0.40
+        association_max_distance_m: 0.25
+        capture:
+          enabled: true
+          # Relative to the process working directory; override this in a
+          # launch invocation when storing a labelled dataset elsewhere.
+          dir: scene_discovery_capture
+          cloud_topic: /seyond/points/cloudini
+          cloud_max_delta_s: 0.005
