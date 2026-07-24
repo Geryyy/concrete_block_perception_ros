@@ -153,33 +153,48 @@ def generate_launch_description():
                     {"calib_yaml": LaunchConfiguration("calib_yaml")},
                 ],
                 remappings=[
-                    ("debug/registration/mask_cutout", "/cbp/debug/registration/mask_cutout"),
-                    ("debug/registration/cleaned_cutout", "/cbp/debug/registration/cleaned_cutout"),
-                    ("debug/registration/plane_cloud", "/cbp/debug/registration/plane_cloud"),
+                    (
+                        "debug/registration/mask_cutout",
+                        "/cbp/debug/registration/mask_cutout",
+                    ),
+                    (
+                        "debug/registration/cleaned_cutout",
+                        "/cbp/debug/registration/cleaned_cutout",
+                    ),
+                    (
+                        "debug/registration/plane_cloud",
+                        "/cbp/debug/registration/plane_cloud",
+                    ),
                     ("debug/registration/template", "/cbp/debug/registration/template"),
                     ("debug/registration/mask", "/cbp/debug/registration/mask"),
-                    ("debug/registration/diagnostics", "/cbp/debug/registration/diagnostics"),
-                    ("debug/registration/gripper_boxes", "/cbp/debug/registration/gripper_boxes"),
+                    (
+                        "debug/registration/diagnostics",
+                        "/cbp/debug/registration/diagnostics",
+                    ),
+                    (
+                        "debug/registration/gripper_boxes",
+                        "/cbp/debug/registration/gripper_boxes",
+                    ),
                 ],
                 output="screen",
                 emulate_tty=True,
                 condition=IfCondition(LaunchConfiguration("start_processing_stack")),
             ),
-            Node(
-                package="cloudini_ros",
-                executable="cloudini_topic_converter",
-                name="seyond_points_cloudini_decoder",
-                parameters=[
-                    {
-                        "compressing": False,
-                        "topic_input": "/seyond/points/cloudini",
-                        "topic_output": "/seyond/points",
-                    }
-                ],
-                output="screen",
-                emulate_tty=True,
-                condition=IfCondition(LaunchConfiguration("start_world_model")),
-            ),
+            # Node(
+            #     package="cloudini_ros",
+            #     executable="cloudini_topic_converter",
+            #     name="seyond_points_cloudini_decoder",
+            #     parameters=[
+            #         {
+            #             "compressing": False,
+            #             "topic_input": "/seyond/points/cloudini",
+            #             "topic_output": "/seyond/points",
+            #         }
+            #     ],
+            #     output="screen",
+            #     emulate_tty=True,
+            #     condition=IfCondition(LaunchConfiguration("start_world_model")),
+            # ),
             Node(
                 package="concrete_block_world_model",
                 executable="world_model_node",
@@ -213,17 +228,32 @@ def generate_launch_description():
                     # Debug topics
                     # =========================
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
-                    ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
-                    ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
+                    (
+                        "debug/yolo_service_debug_image",
+                        "/cbp/debug/yolo_service_debug_image",
+                    ),
+                    (
+                        "debug/continuous_merged_mask",
+                        "/cbp/debug/continuous_merged_mask",
+                    ),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
-                    ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
+                    (
+                        "debug/refine_grasped_roi_input",
+                        "/cbp/debug/refine_grasped_roi_input",
+                    ),
                     ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
                     ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
                     ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
-                    ("timing/continuous_registration_ms", "/cbp/timing/continuous_registration_ms"),
+                    (
+                        "timing/continuous_registration_ms",
+                        "/cbp/timing/continuous_registration_ms",
+                    ),
                     ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
                     ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
-                    ("timing/continuous_detections", "/cbp/timing/continuous_detections"),
+                    (
+                        "timing/continuous_detections",
+                        "/cbp/timing/continuous_detections",
+                    ),
                     ("timing/continuous_accepted", "/cbp/timing/continuous_accepted"),
                     ("timing/continuous_rejected", "/cbp/timing/continuous_rejected"),
                 ],
