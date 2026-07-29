@@ -23,5 +23,7 @@ world_model_node:
         # self-filter geometry can be replayed and scored offline.
         tf_frames:
           - K0_mounting_base
+          - elastic/K9
           - elastic/K10_left_rail
+          - elastic/K11
           - elastic/K12_right_rail

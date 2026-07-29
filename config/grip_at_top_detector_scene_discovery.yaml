@@ -9,18 +9,24 @@ concrete_block_detector:
       # detector default remains suitable for raised/stacked blocks.
       cluster_max_center_z: 1.2
     gripper_self_filter:
-      # The missed labelled block in grip_at_top is merged with the two rails
-      # before cuboid proposal generation.  Remove only points near these TF
-      # anchored rail cylinders; sensor-ray evidence stays unmodified.
+      # The missed labelled block in grip_at_top is merged with gripper-side
+      # clutter before cuboid proposal generation. The K9->K10 and K11->K12
+      # FK lines form the inside faces of two outward-facing exclusion boxes.
+      # Sensor-ray evidence stays unmodified.
       enabled: true
       publish_markers: true
-      radius_m: 0.10
+      # A box's local X follows parent->rail, local Y points outward, and
+      # local Z spans across the rail. Tune these while viewing the cyan boxes.
+      outboard_extent_m: 1.50
+      cross_rail_extent_m: 1.20
+      rail_end_margin_m: 0.15
       left_rail:
-        frame: elastic/K10_left_rail
-        # The PZS100 rail mesh is approximately 1.4 m along local X.
-        start_local_m: [-0.70, 0.0, 0.0]
-        end_local_m: [0.70, 0.0, 0.0]
+        parent_frame: elastic/K9
+        rail_frame: elastic/K10_left_rail
+        # Screenshot/FK: K9 local +Z points left, outboard of the gripper.
+        outward_axis_local: [0.0, 0.0, 1.0]
       right_rail:
-        frame: elastic/K12_right_rail
-        start_local_m: [-0.70, 0.0, 0.0]
-        end_local_m: [0.70, 0.0, 0.0]
+        parent_frame: elastic/K11
+        rail_frame: elastic/K12_right_rail
+        # Screenshot/FK: K11 local +Z points right, outboard of the gripper.
+        outward_axis_local: [0.0, 0.0, 1.0]
