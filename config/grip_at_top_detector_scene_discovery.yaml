@@ -24,6 +24,9 @@ concrete_block_detector:
       # Full-cloud, ray-aware evidence gate.  Matches blockpose's documented
       # scene-discovery threshold; no scene bounds or point filtering is used.
       min_score: 0.4
+      # An FK-seeded pose may replace an overlapping geometric pose only when
+      # its independently measured cloud evidence improves by this margin.
+      fk_seed_min_evidence_gain: 0.15
       # This bag contains free blocks resting on the fitted support surface.
       # Reject elevated hardware-shaped hypotheses, while the portable
       # detector default remains suitable for raised/stacked blocks.
