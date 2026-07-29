@@ -17,3 +17,11 @@ world_model_node:
         cloud_transport: cloudini
         dir: scene_discovery_capture
         cloud_max_delta_s: 0.005
+    debug:
+      scene_discovery_dump:
+        # Keep the timestamped rail TFs with each capture so the exact
+        # self-filter geometry can be replayed and scored offline.
+        tf_frames:
+          - K0_mounting_base
+          - elastic/K10_left_rail
+          - elastic/K12_right_rail

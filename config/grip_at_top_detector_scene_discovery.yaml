@@ -8,3 +8,19 @@ concrete_block_detector:
       # Reject elevated hardware-shaped hypotheses, while the portable
       # detector default remains suitable for raised/stacked blocks.
       cluster_max_center_z: 1.2
+    gripper_self_filter:
+      # The missed labelled block in grip_at_top is merged with the two rails
+      # before cuboid proposal generation.  Remove only points near these TF
+      # anchored rail cylinders; sensor-ray evidence stays unmodified.
+      enabled: true
+      publish_markers: true
+      radius_m: 0.10
+      left_rail:
+        frame: elastic/K10_left_rail
+        # The PZS100 rail mesh is approximately 1.4 m along local X.
+        start_local_m: [-0.70, 0.0, 0.0]
+        end_local_m: [0.70, 0.0, 0.0]
+      right_rail:
+        frame: elastic/K12_right_rail
+        start_local_m: [-0.70, 0.0, 0.0]
+        end_local_m: [0.70, 0.0, 0.0]
