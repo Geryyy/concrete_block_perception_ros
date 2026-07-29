@@ -1,5 +1,14 @@
 concrete_block_detector:
   ros__parameters:
+    rgb_edge_prior:
+      # Optional classical RGB tie-breaker for overlapping geometric cuboid
+      # hypotheses. Missing/stale RGB, camera calibration, or TF is a no-op.
+      enabled: true
+      image_topic: /blackfly_rotated/image_rect
+      camera_info_topic: /blackfly_rotated/camera_info
+      max_sync_delta_s: 0.08
+      weight: 0.05
+      max_image_dimension_px: 768
     pose_priors:
       fk:
         # Timestamped FK resolves the 90-degree / roll ambiguity for a block
