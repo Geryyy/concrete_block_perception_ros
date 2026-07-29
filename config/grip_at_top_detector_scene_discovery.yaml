@@ -8,6 +8,13 @@ concrete_block_detector:
       # Reject elevated hardware-shaped hypotheses, while the portable
       # detector default remains suitable for raised/stacked blocks.
       cluster_max_center_z: 1.2
+      # Scene discovery assumes loose blocks resting on support. Keep the
+      # plane-derived top direction if SDF is pulled away from gravity by
+      # gripper clutter; its refined translation and yaw are retained.
+      refine_preserve_top_axis_if_gravity_worsens: true
+      # The real replay contains more than eight valid clutter components.
+      # A labelled free block was otherwise truncated before plane fitting.
+      proposal_max_components: 16
     gripper_self_filter:
       # The missed labelled block in grip_at_top is merged with gripper-side
       # clutter before cuboid proposal generation. The K9->K10 and K11->K12
