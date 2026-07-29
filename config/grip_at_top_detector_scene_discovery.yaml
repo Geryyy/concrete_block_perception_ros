@@ -17,9 +17,9 @@ concrete_block_detector:
       publish_markers: true
       # A box's local X follows parent->rail, local Y points outward, and
       # local Z spans across the rail. Tune these while viewing the cyan boxes.
-      outboard_extent_m: 1.50
-      cross_rail_extent_m: 1.20
-      rail_end_margin_m: 0.15
+      outboard_extent_m: 0.30
+      cross_rail_extent_m: 0.9
+      rail_end_margin_m: 0.0
       left_rail:
         parent_frame: elastic/K9
         rail_frame: elastic/K10_left_rail
