@@ -27,3 +27,6 @@ world_model_node:
           - elastic/K10_left_rail
           - elastic/K11
           - elastic/K12_right_rail
+          # Preserve the FK source used by the detector's optional pose prior
+          # so future captured scenes remain replayable with that evidence.
+          - elastic/K8_tool_center_point

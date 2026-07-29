@@ -1,5 +1,16 @@
 concrete_block_detector:
   ros__parameters:
+    pose_priors:
+      fk:
+        # Timestamped FK resolves the 90-degree / roll ambiguity for a block
+        # in the PZS100. It only re-ranks geometry-supported candidates; a TF
+        # failure or an absent block leaves normal scene discovery unchanged.
+        tcp_frame: elastic/K8_tool_center_point
+        tcp_to_block_xyz: [0.0, 0.0, 0.85]
+        tcp_to_block_rpy: [3.14159265, 0.0, 0.0]
+        weight: 0.35
+        translation_tolerance_m: 0.35
+        orientation_tolerance_rad: 0.70
     detector:
       # Full-cloud, ray-aware evidence gate.  Matches blockpose's documented
       # scene-discovery threshold; no scene bounds or point filtering is used.
