@@ -6,10 +6,14 @@ world_model_node:
         # request-local raw detector observations for offline review.
         min_detector_confidence: 0.40
         association_max_distance_m: 0.25
-        capture:
-          enabled: true
-          # Relative to the process working directory; override this in a
-          # launch invocation when storing a labelled dataset elsewhere.
-          dir: scene_discovery_capture
-          cloud_topic: /seyond/points/cloudini
-          cloud_max_delta_s: 0.005
+    scene_discovery:
+      capture:
+        enabled: true
+        # Relative to the process working directory; override this in a
+        # launch invocation when storing a labelled dataset elsewhere.
+        # The transport plugin derives /seyond/points/cloudini from this
+        # base topic and decodes it to the PointCloud2 saved in cloud.pcd.
+        cloud_topic: /seyond/points
+        cloud_transport: cloudini
+        dir: scene_discovery_capture
+        cloud_max_delta_s: 0.005
