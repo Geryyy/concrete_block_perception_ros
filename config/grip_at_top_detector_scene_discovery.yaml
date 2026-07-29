@@ -1,5 +1,25 @@
 concrete_block_detector:
   ros__parameters:
+    # Independent switches for replay ablations.  Leave the numerical
+    # configuration below intact: `false` makes that module a true no-op and
+    # records it as disabled in /cbp/debug/scene_discovery/detector/diagnostics.
+    modules:
+      sdf_refinement: {enabled: true}
+      gripper_self_filter: {enabled: true}
+      priors:
+        fk: {enabled: true}
+        request: {enabled: true}
+      rgb_edge_prior: {enabled: true}
+    debug:
+      # Detector-owned stage outputs.  The world model continues to own its
+      # final pose overlay; use these outlets to inspect module contributions.
+      enabled: true
+      publish_clouds: true
+      publish_markers: true
+      publish_diagnostics: true
+      publish_rgb_input: true
+      publish_rejected_candidates: true
+      topic_prefix: /cbp/debug/scene_discovery/detector
     rgb_edge_prior:
       # Optional classical RGB tie-breaker for overlapping geometric cuboid
       # hypotheses. Missing/stale RGB, camera calibration, or TF is a no-op.
