@@ -105,12 +105,40 @@ ament_target_dependencies(block_registration_node
   tf2_geometry_msgs
 )
 
+# ============================================================
+# SCENE DATASET EXPORTER NODE (bag -> unlabeled snapshot dataset)
+# ============================================================
+add_executable(scene_dataset_exporter_node
+  src/nodes/scene_dataset_exporter_node.cpp
+)
+
+target_include_directories(scene_dataset_exporter_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(scene_dataset_exporter_node
+  ${OpenCV_LIBS}
+  Eigen3::Eigen
+)
+
+ament_target_dependencies(scene_dataset_exporter_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  cv_bridge
+  message_filters
+  tf2
+  tf2_ros
+)
+
 # ------------------------------------------------------------
 # Install
 # ------------------------------------------------------------
 install(TARGETS
   block_detection_tracking_node
   block_registration_node
+  scene_dataset_exporter_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
