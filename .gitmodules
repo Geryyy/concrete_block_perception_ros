@@ -1,3 +1,9 @@
 [submodule "external/pcd_block_estimation"]
 	path = external/pcd_block_estimation
 	url = https://github.com/Geryyy/pcd_block_estimation.git
+[submodule "external/block_state_estimation"]
+	path = external/block_state_estimation
+	url = git@github.com:Geryyy/block_state_estimation.git
+[submodule "external/world_model"]
+	path = external/world_model
+	url = git@github.com:Geryyy/world_model.git

@@ -31,6 +31,11 @@ def generate_launch_description():
                 description="World-model perception mode: IDLE or CONTINUOUS.",
             ),
             DeclareLaunchArgument(
+                "scene_discovery_return_cached_world",
+                default_value="false",
+                description="Return detector-populated state for SCENE_DISCOVERY.",
+            ),
+            DeclareLaunchArgument(
                 "params_file",
                 default_value=default_world_model_params,
             ),
@@ -43,6 +48,8 @@ def generate_launch_description():
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "perception_mode": LaunchConfiguration("perception_mode"),
+                        "scene_discovery.return_cached_world": LaunchConfiguration(
+                            "scene_discovery_return_cached_world"),
                     },
                 ],
                 remappings=[
