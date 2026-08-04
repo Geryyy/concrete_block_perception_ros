@@ -8,8 +8,10 @@ IMU broadcasters, gripper detector, and RViz).
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -25,6 +27,7 @@ def generate_launch_description():
         "world_model_scene_discovery_params")
     detector_scene_discovery_params = LaunchConfiguration(
         "detector_scene_discovery_params")
+    start_wall_plan_server = LaunchConfiguration("start_wall_plan_server")
 
     world_model_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -94,6 +97,16 @@ def generate_launch_description():
         / "config"
         / "grip_at_top_detector_scene_discovery.yaml"
     )
+    wall_plan_server_params = (
+        PathSubstitution(FindPackageShare("concrete_block_assembly_planning"))
+        / "config"
+        / "wall_plan_server.yaml"
+    )
+    wall_plans_file = (
+        PathSubstitution(FindPackageShare("concrete_block_assembly_planning"))
+        / "config"
+        / "wall_plans.yaml"
+    )
 
     return LaunchDescription(
         [
@@ -113,7 +126,32 @@ def generate_launch_description():
                 default_value=default_detector_scene_discovery_params),
             DeclareLaunchArgument(
                 "grasp_detector_config", default_value=default_grasp_detector_config),
+            DeclareLaunchArgument(
+                "start_wall_plan_server",
+                default_value="true",
+                description=(
+                    "Start the wall-plan service used by RViz Plan Control. "
+                    "Disable only for perception-only replay."
+                ),
+            ),
             world_model_launch,
+            Node(
+                package="concrete_block_assembly_planning",
+                executable="wall_plan_server",
+                name="concrete_block_wall_plan_server",
+                output="screen",
+                parameters=[
+                    wall_plan_server_params,
+                    {
+                        "use_sim_time": use_sim_time,
+                        "world_model_service": "/world_model_node/get_coarse_blocks",
+                        "world_model_timeout_s": 2.0,
+                        "output_frame": "world",
+                        "wall_plans_file": wall_plans_file,
+                    },
+                ],
+                condition=IfCondition(start_wall_plan_server),
+            ),
             TimerAction(period=3.0, actions=[remote_client_launch, detector_launch]),
         ]
     )

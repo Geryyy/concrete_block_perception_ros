@@ -26,6 +26,8 @@
 
   <exec_depend>image_transport</exec_depend>
   <exec_depend>sam2_segmentation</exec_depend>
+  <!-- remote_replay_world_model.launch.py starts the Plan Control service. -->
+  <exec_depend>concrete_block_assembly_planning</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
