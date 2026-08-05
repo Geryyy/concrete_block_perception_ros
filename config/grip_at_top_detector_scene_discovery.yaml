@@ -40,6 +40,33 @@ concrete_block_detector:
         weight: 0.35
         translation_tolerance_m: 0.35
         orientation_tolerance_rad: 0.70
+    scene_bounds:
+      # World-frame crop to the reachable workspace, applied before every other
+      # stage. Vegetation outside the working area was producing single-face
+      # (POSE_COARSE) candidates that cleared min_score and were associated into
+      # the world model; a block the crane cannot reach is not a block, so
+      # cropping is a statement about the workcell rather than about this bag.
+      #
+      # Derived from the 101 approved ground-truth blocks in the 43 annotated
+      # captures under scene_discovery_capture{,_annotated} and
+      # blockpose/data/registration_snapshots. Their centre extents are
+      # x [-13.81, -10.81], y [-3.11, 2.81], z [0.37, 2.52]; the bounds below
+      # add the worst-case block half-diagonal under free yaw (0.541 m for a
+      # 0.9 x 0.6 footprint) plus roughly 0.5 m, leaving >= 0.57 m clearance to
+      # the nearest ground-truth block face on every side. All 101 fit entirely
+      # inside.
+      #
+      # z_min sits deliberately below ground: the pipeline RANSAC-fits the
+      # support plane and reports ground.support_z from these same points, so
+      # cropping at block level would remove the ground it needs.
+      # z_max clears a carried block (highest labelled centre 2.52 -> top 2.82).
+      #
+      # These are site coordinates, not portable defaults. Re-derive them from
+      # the labelled captures if the crane or the working area moves.
+      enabled: true
+      min_m: [-15.0, -4.5, -0.5]
+      max_m: [-9.5, 4.0, 3.5]
+
     detector:
       # Full-cloud, ray-aware evidence gate.  Matches blockpose's documented
       # scene-discovery threshold; no scene bounds or point filtering is used.
