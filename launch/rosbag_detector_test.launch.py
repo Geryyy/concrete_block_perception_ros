@@ -31,6 +31,7 @@ discovery delay.
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     SetEnvironmentVariable,
     TimerAction,
@@ -70,18 +71,24 @@ def generate_launch_description():
     )
 
     # ── World model: first, so the RViz panel finds it ──────────────────
-    world_model_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_world_model"))
-            / "launch"
-            / "world_node.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "perception_mode": "IDLE",
-            "params_file": world_model_params,
-            "scene_discovery_params": world_model_scene_discovery_params,
-        }.items(),
+    world_model_launch = GroupAction(
+        [
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathSubstitution(FindPackageShare("concrete_block_world_model"))
+                    / "launch"
+                    / "world_node.launch.py"
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "perception_mode": "IDLE",
+                    "params_file": world_model_params,
+                    "scene_discovery_params": world_model_scene_discovery_params,
+                }.items(),
+            )
+        ],
+        scoped=True,
+        forwarding=True,
     )
 
     wall_plan_server = Node(
@@ -105,34 +112,52 @@ def generate_launch_description():
     )
 
     # ── Robot model + TF + IMU + grasp detector (no RViz; we start our own) ──
-    replay_client_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_perception"))
-            / "launch"
-            / "remote_replay_client.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "rviz": "false",
-            "tool": tool,
-            "grasp_detector_config": grasp_detector_config,
-        }.items(),
+    # Scoped: IncludeLaunchDescription does not confine launch_arguments to the
+    # included file, and remote_replay_client also takes an argument named
+    # "rviz". Unscoped, its rviz:=false overwrites ours and our RViz below is
+    # silently skipped.
+    replay_client_launch = GroupAction(
+        [
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathSubstitution(FindPackageShare("concrete_block_perception"))
+                    / "launch"
+                    / "remote_replay_client.launch.py"
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "rviz": "false",
+                    "tool": tool,
+                    "grasp_detector_config": grasp_detector_config,
+                }.items(),
+            )
+        ],
+        scoped=True,
+        forwarding=True,
     )
 
     # ── The detector under test ─────────────────────────────────────────
-    detector_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("concrete_block_detector"))
-            / "launch"
-            / "concrete_block_detector.launch.py"
-        ),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "params_file": detector_params,
-            "scene_discovery_params": detector_scene_discovery_params,
-            "points_topic": points_topic,
-            "transport": transport,
-        }.items(),
+    # Scoped for the same reason: params_file / scene_discovery_params are
+    # generic names shared with world_node.launch.py.
+    detector_launch = GroupAction(
+        [
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathSubstitution(FindPackageShare("concrete_block_detector"))
+                    / "launch"
+                    / "concrete_block_detector.launch.py"
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "params_file": detector_params,
+                    "scene_discovery_params": detector_scene_discovery_params,
+                    "points_topic": points_topic,
+                    "transport": transport,
+                }.items(),
+            )
+        ],
+        scoped=True,
+        forwarding=True,
     )
 
     rviz_node = Node(
