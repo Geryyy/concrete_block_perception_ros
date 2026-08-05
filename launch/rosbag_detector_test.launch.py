@@ -4,6 +4,12 @@ Everything runs on *this* machine; the only external input is a rosbag
 supplying /clock, TF, /joint_states, the Seyond cloud and the Blackfly image
 (e.g. ``./play_bag.sh`` at the workspace root).
 
+**Start the bag first, and keep it playing.** Every node here runs with
+``use_sim_time``, so without /clock their time is frozen: RViz renders nothing
+and looks hung, and scene discovery just burns its timeout because the detector
+has no cloud younger than ``cached_cloud_max_age_s``. play_bag.sh plays once and
+stops, so a long RViz session outlives it -- replay before each discovery.
+
 Composed of:
 
   * ``remote_replay_client.launch.py`` with ``rviz:=false`` -- robot model

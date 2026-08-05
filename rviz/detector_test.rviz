@@ -31,12 +31,12 @@ Panels:
       - /Current View1
     Name: Views
     Splitter Ratio: 0.5
-  - Class: timber_crane_rviz_panel/TimberCranePanel
-    Name: TimberCranePanel
-  - Class: mp_rviz_panel/MotionPlanningPanel
-    Name: MotionPlanningPanel
-  - Class: behavior_tree_panel/BehaviorTreePanel
-    Name: BehaviorTreePanel
+  # TimberCranePanel, MotionPlanningPanel, BehaviorTreePanel and
+  # AssemblyWorkflowPanel are deliberately absent: this bench runs no
+  # controller_manager, no motion planning and no BT action server.
+  # TimberCranePanel in particular polls controller_manager on a 1 Hz timer
+  # with a blocking wait_for_service(1s), so with no controller_manager it
+  # blocks ~every second and starves the callbacks the Perception panel needs.
   - Class: concrete_block_rviz_plugins/PerceptionControlPanel
     ClearWorldService: /world_model_node/clear_world_model
     EnableDebug: true
@@ -50,8 +50,6 @@ Panels:
     Name: PlanControlPanel
     PlanControlService: /concrete_block_wall_plan_server/plan_control
     WallPlansFile: /workspaces/ros2_baustelle_ws/src/concrete_block_stack/concrete_block_assembly_planning/config/wall_plans.yaml
-  - Class: concrete_block_rviz_plugins/AssemblyWorkflowPanel
-    Name: AssemblyWorkflowPanel
 Visualization Manager:
   Class: ""
   Displays:
@@ -337,7 +335,7 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
@@ -664,7 +662,7 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description_elastic
@@ -690,7 +688,7 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description_desired
