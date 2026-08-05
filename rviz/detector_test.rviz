@@ -1,0 +1,1925 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 70
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /TF1
+        - /RobotModel Rigid1/Description Topic1
+        - /IMUs1/IMU161/Acceleration properties1
+        - /IMUs1/IMU151/Acceleration properties1
+        - /IMUs1/IMU141/Axes properties1
+        - /IMUs1/IMU131/Acceleration properties1
+        - /IMUs1/IMU121
+        - /Planning and Control1
+        - /Perception1
+        - /PointCloud21
+        - /PointCloud22
+      Splitter Ratio: 0.762273907661438
+    Tree Height: 97
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Expanded:
+      - /2D Goal Pose1
+      - /Publish Point1
+      - /Log Picker1
+    Name: Tool Properties
+    Splitter Ratio: 0.5886790156364441
+  - Class: rviz_common/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: timber_crane_rviz_panel/TimberCranePanel
+    Name: TimberCranePanel
+  - Class: mp_rviz_panel/MotionPlanningPanel
+    Name: MotionPlanningPanel
+  - Class: behavior_tree_panel/BehaviorTreePanel
+    Name: BehaviorTreePanel
+  - Class: concrete_block_rviz_plugins/PerceptionControlPanel
+    ClearWorldService: /world_model_node/clear_world_model
+    EnableDebug: true
+    Name: PerceptionControlPanel
+    RefineGraspedUseTarget: false
+    RunPoseService: /world_model_node/run_pose_estimation
+    TargetBlockId: block_0
+    TaskStatusService: /world_model_node/set_block_task_status
+    TimeoutS: 8
+  - Class: concrete_block_rviz_plugins/PlanControlPanel
+    Name: PlanControlPanel
+    PlanControlService: /concrete_block_wall_plan_server/plan_control
+    WallPlansFile: /workspaces/ros2_baustelle_ws/src/concrete_block_stack/concrete_block_assembly_planning/config/wall_plans.yaml
+  - Class: concrete_block_rviz_plugins/AssemblyWorkflowPanel
+    Name: AssemblyWorkflowPanel
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz_default_plugins/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: false
+        K0_mounting_base:
+          Value: false
+        K10_left_rail:
+          Value: false
+        K11:
+          Value: false
+        K12_right_rail:
+          Value: false
+        K1_boom_cylinder_suspension:
+          Value: false
+        K1_slewing_column:
+          Value: false
+        K2_arm_cylinder_suspension:
+          Value: false
+        K2_boom:
+          Value: false
+        K3_arm:
+          Value: false
+        K3_hook:
+          Value: false
+        K3_light_box:
+          Value: false
+        K4_outer_telescope:
+          Value: false
+        K5_inner_telescope:
+          Value: false
+        K6_double_joint_link:
+          Value: false
+        K7_rotator_upper_part:
+          Value: false
+        K8_rotator_lower_part:
+          Value: false
+        K8_tool_center_point:
+          Value: true
+        K9:
+          Value: false
+        before_q11:
+          Value: false
+        before_q9:
+          Value: false
+        blackfly:
+          Value: true
+        blackfly_rotated:
+          Value: true
+        cab_fender:
+          Value: false
+        control_box:
+          Value: false
+        control_box_sensor_mount:
+          Value: false
+        desired/K0_mounting_base:
+          Value: false
+        floor:
+          Value: true
+        hesai_frame:
+          Value: true
+        hydraulic_block:
+          Value: false
+        imu11_origin:
+          Value: false
+        imu12_origin:
+          Value: false
+        imu13_origin:
+          Value: false
+        imu14_origin:
+          Value: false
+        imu15:
+          Value: false
+        imu15_origin:
+          Value: false
+        imu16:
+          Value: false
+        imu16_origin:
+          Value: false
+        imu17:
+          Value: false
+        imu17_origin:
+          Value: false
+        livox_frame:
+          Value: false
+        livox_frame_up:
+          Value: true
+        livox_sim:
+          Value: true
+        load_bed_reference:
+          Value: false
+        moved_with_q1:
+          Value: false
+        moved_with_q2:
+          Value: false
+        moved_with_q3:
+          Value: false
+        moved_with_q4:
+          Value: false
+        moved_with_q5:
+          Value: false
+        moved_with_q6:
+          Value: false
+        moved_with_q7:
+          Value: false
+        moved_with_q8:
+          Value: false
+        sensor_konsole:
+          Value: true
+        seyond:
+          Value: false
+        telescope_bended:
+          Value: false
+        tr_bed:
+          Value: false
+        tr_black:
+          Value: false
+        tr_crane_frameplate:
+          Value: false
+        tr_grey:
+          Value: false
+        tr_rr_fender:
+          Value: false
+        tr_rr_rims:
+          Value: false
+        tr_rr_wheels:
+          Value: false
+        tr_rungen:
+          Value: false
+        tr_tank:
+          Value: false
+        tr_white:
+          Value: false
+        truck_cab:
+          Value: false
+        truck_origin:
+          Value: false
+        truck_rotated_pitch:
+          Value: false
+        truck_rotated_roll:
+          Value: false
+        virtual_tcp:
+          Value: true
+        world:
+          Value: false
+      Marker Scale: 1
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Tree:
+        world:
+          floor:
+            {}
+          truck_origin:
+            truck_rotated_pitch:
+              truck_rotated_roll:
+                K0_mounting_base:
+                  desired/K0_mounting_base:
+                    {}
+                  imu11_origin:
+                    {}
+                  moved_with_q1:
+                    K1_slewing_column:
+                      K1_boom_cylinder_suspension:
+                        {}
+                      control_box:
+                        control_box_sensor_mount:
+                          {}
+                      hydraulic_block:
+                        {}
+                      moved_with_q2:
+                        K2_boom:
+                          K2_arm_cylinder_suspension:
+                            {}
+                          imu12_origin:
+                            {}
+                          imu13_origin:
+                            {}
+                          moved_with_q3:
+                            K3_arm:
+                              K3_hook:
+                                {}
+                              K3_light_box:
+                                {}
+                              imu14_origin:
+                                {}
+                              telescope_bended:
+                                moved_with_q4:
+                                  K4_outer_telescope:
+                                    moved_with_q5:
+                                      K5_inner_telescope:
+                                        imu15:
+                                          imu15_origin:
+                                            {}
+                                        moved_with_q6:
+                                          K6_double_joint_link:
+                                            moved_with_q7:
+                                              K7_rotator_upper_part:
+                                                imu16:
+                                                  imu16_origin:
+                                                    {}
+                                                moved_with_q8:
+                                                  K8_rotator_lower_part:
+                                                    K8_tool_center_point:
+                                                      before_q11:
+                                                        K11:
+                                                          K12_right_rail:
+                                                            {}
+                                                      before_q9:
+                                                        K9:
+                                                          K10_left_rail:
+                                                            {}
+                                                      virtual_tcp:
+                                                        {}
+                                                  imu17:
+                                                    imu17_origin:
+                                                      {}
+                    sensor_konsole:
+                      blackfly:
+                        blackfly_rotated:
+                          {}
+                      hesai_frame:
+                        {}
+                      livox_frame:
+                        livox_frame_up:
+                          {}
+                        livox_sim:
+                          {}
+                      seyond:
+                        {}
+                truck_cab:
+                  cab_fender:
+                    {}
+                  tr_bed:
+                    load_bed_reference:
+                      {}
+                  tr_black:
+                    {}
+                  tr_crane_frameplate:
+                    {}
+                  tr_grey:
+                    {}
+                  tr_rr_fender:
+                    {}
+                  tr_rr_rims:
+                    {}
+                  tr_rr_wheels:
+                    {}
+                  tr_rungen:
+                    {}
+                  tr_tank:
+                    {}
+                  tr_white:
+                    {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description File: ""
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        K0_mounting_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K10_left_rail:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K11:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        K12_right_rail:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K1_boom_cylinder_suspension:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        K1_slewing_column:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K2_arm_cylinder_suspension:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        K2_boom:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K3_arm:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K3_hook:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K3_light_box:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K4_outer_telescope:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K5_inner_telescope:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K6_double_joint_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K7_rotator_upper_part:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K8_rotator_lower_part:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K8_tool_center_point:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        K9:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        Link Tree Style: Links in Alphabetic Order
+        before_q11:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        before_q9:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        blackfly:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        blackfly_rotated:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        cab_fender:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        control_box:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        control_box_sensor_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        hesai_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        hydraulic_block:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu11_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu12_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu13_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu14_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu15:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu15_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        imu16:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu16_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        imu17:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu17_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        livox_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        livox_frame_up:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        moved_with_q8:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sensor_konsole:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        seyond:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        telescope_bended:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        tr_bed:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_black:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_crane_frameplate:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_grey:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_rr_fender:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_rr_rims:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_rr_wheels:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_rungen:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_tank:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tr_white:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        truck_cab:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        truck_origin:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        truck_rotated_pitch:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        truck_rotated_roll:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        world:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: RobotModel Rigid
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 0.5
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description File: ""
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description_elastic
+      Enabled: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: RobotModel Elastic
+      TF Prefix: /elastic
+      Update Interval: 0
+      Value: false
+      Visual Enabled: true
+    - Alpha: 0.5
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description File: ""
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description_desired
+      Enabled: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: RobotModel Desired
+      TF Prefix: desired
+      Update Interval: 0
+      Value: false
+      Visual Enabled: true
+    - Class: rviz_common/Group
+      Displays:
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU17
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu17_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU16
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu16_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU15
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu15_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU14
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu14_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU13
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu13_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+        - Acceleration properties:
+            Acc. vector alpha: 1
+            Acc. vector color: 255; 0; 0
+            Acc. vector scale: 1
+            Derotate acceleration: false
+            Enable acceleration: false
+          Axes properties:
+            Axes scale: 1
+            Enable axes: true
+          Box properties:
+            Box alpha: 1
+            Box color: 255; 0; 0
+            Enable box: false
+            x_scale: 1
+            y_scale: 1
+            z_scale: 1
+          Class: rviz_imu_plugin/Imu
+          Enabled: true
+          Name: IMU12
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /imu12_sensor_broadcaster/imu
+          Value: true
+          fixed_frame_orientation: true
+      Enabled: false
+      Name: IMUs
+    - Class: rviz_common/Group
+      Displays:
+        - Alpha: 1
+          Class: vision_msgs_rviz_plugins/BoundingBox3DArray
+          Color: 255; 255; 0
+          Enabled: true
+          Line Width: 0.05000000074505806
+          Name: Collision Bodies Full
+          Namespaces:
+            {}
+          Only Edge: true
+          Topic:
+            Depth: 5
+            Durability Policy: Transient Local
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /collision_objects
+          Value: true
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
+          Name: Path markers
+          Namespaces:
+            {}
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /path_marker
+          Value: false
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Collision Bodies
+          Namespaces:
+            K0_mounting_base: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /collision_marker_array
+          Value: true
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Target
+          Namespaces:
+            K0_mounting_base: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /target_marker
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 25; 255; 0
+          Enabled: true
+          Head Diameter: 0.30000001192092896
+          Head Length: 0.20000000298023224
+          Length: 0.20000000298023224
+          Line Style: Billboards
+          Line Width: 0.029999999329447746
+          Name: Path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 255; 85; 255
+          Pose Style: Axes
+          Radius: 0.009999999776482582
+          Shaft Diameter: 0.10000000149011612
+          Shaft Length: 0.10000000149011612
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: tcp_path
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 25; 255; 0
+          Enabled: true
+          Head Diameter: 0.30000001192092896
+          Head Length: 0.20000000298023224
+          Length: 0.30000001192092896
+          Line Style: Lines
+          Line Width: 0.029999999329447746
+          Name: MPC local path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 255; 85; 255
+          Pose Style: None
+          Radius: 0.029999999329447746
+          Shaft Diameter: 0.10000000149011612
+          Shaft Length: 0.10000000149011612
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /trajectory_controller_a2b/tcp_path_local
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 255; 170; 0
+          Enabled: true
+          Head Diameter: 0.30000001192092896
+          Head Length: 0.20000000298023224
+          Length: 0.30000001192092896
+          Line Style: Lines
+          Line Width: 0.03999999910593033
+          Name: CBMP planned path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 255; 170; 0
+          Pose Style: None
+          Radius: 0.03999999910593033
+          Shaft Diameter: 0.10000000149011612
+          Shaft Length: 0.10000000149011612
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /concrete_block_motion_planning_node/planned_path
+          Value: true
+      Enabled: true
+      Name: Planning and Control
+    - Class: rviz_common/Group
+      Displays:
+        - Alpha: 1
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 0; 255; 255
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: true
+          Name: AggregatedLogs Loading Area
+          Scale: 1
+          Selectable: true
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/logs/aggregated/filtered
+          Value: true
+        - Alpha: 1
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 255; 255; 0
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: true
+          Name: Aggregated Logs Loadbed
+          Scale: 1
+          Selectable: true
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/logs/aggregated_load_bed
+          Value: true
+        - Alpha: 1
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 170; 85; 0
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: true
+          Name: Target Slots
+          Scale: 1
+          Selectable: true
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /target_slots
+          Value: true
+        - Alpha: 0.5
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 255; 0; 255
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: true
+          Name: AggregatedLogs World
+          Scale: 1
+          Selectable: true
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/logs/aggregated
+          Value: true
+        - Alpha: 0.5
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 255; 25; 0
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: false
+          Name: FittedLogs
+          Scale: 1
+          Selectable: false
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /zed2i/left/logs/cylinder_fitted
+          Value: false
+        - Alpha: 1
+          Axes Length: 1
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 85; 0; 255
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: true
+          Name: PickedLogs
+          Scale: 1
+          Selectable: false
+          Show ID: false
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /picked_logs
+          Value: true
+        - Alpha: 0.5
+          Axes Length: 0
+          Axes Radius: 0.10000000149011612
+          Class: wood_log_rviz_plugins/LogArray
+          Color: 87; 227; 137
+          Covariance:
+            Orientation:
+              Alpha: 0.5
+              Color: 255; 255; 127
+              Color Style: Unique
+              Frame: Local
+              Offset: 1
+              Scale: 1
+              Value: true
+            Position:
+              Alpha: 0.30000001192092896
+              Color: 204; 51; 204
+              Scale: 1
+              Value: true
+            Value: true
+          Enabled: false
+          Name: DetectedLogs
+          Scale: 1
+          Selectable: true
+          Show ID: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/logs/filtered
+          Value: false
+        - Alpha: 1
+          Axes Length: 1
+          Axes Radius: 0.10000000149011612
+          Class: rviz_default_plugins/Pose
+          Color: 255; 25; 0
+          Enabled: true
+          Head Length: 0.30000001192092896
+          Head Radius: 0.10000000149011612
+          Name: Region Filter Loading Area Pose
+          Shaft Length: 1
+          Shaft Radius: 0.05000000074505806
+          Shape: Arrow
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/log_region_filter_loading_area/center_pose
+          Value: true
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: Region Filter Loading Area
+          Namespaces:
+            {}
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/log_region_filter_marker/loading_area
+          Value: true
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: Region Filter
+          Namespaces:
+            {}
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /perception/log_region_filter_marker
+          Value: true
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0
+          Enabled: false
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 219
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: Hesai
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.05000000074505806
+          Style: Flat Squares
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /hesai_points
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: false
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0.5
+          Enabled: false
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 255
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: LivoxLidar
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.004000000189989805
+          Style: Points
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 1
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: /livox/lidar
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: false
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0
+          Enabled: false
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 255
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: Seyond
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.019999999552965164
+          Style: Flat Squares
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /seyond_points
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: false
+        - Class: rviz_default_plugins/Image
+          Enabled: false
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Zed
+          Normalize Range: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: /zed2i/left/image_rect/compressed
+          Value: false
+        - Class: rviz_default_plugins/Image
+          Enabled: false
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image
+          Normalize Range: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: /camera/image
+          Value: false
+        - Class: rviz_default_plugins/Image
+          Enabled: false
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Livox ortho image
+          Normalize Range: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /livox/lidar/gripper/ortho_image
+          Value: false
+        - Class: rviz_default_plugins/Camera
+          Enabled: false
+          Far Plane Distance: 100
+          Image Rendering: background and overlay
+          Name: ZedCamera
+          Overlay Alpha: 0.5
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: /zed2i/left/image_rect_color/compressed
+          Value: false
+          Visibility:
+            "": true
+            Concrete block detector: true
+            Decision Making:
+              "": true
+              Value: true
+            Grid: true
+            IMUs:
+              IMU12: true
+              IMU13: true
+              IMU14: true
+              IMU15: true
+              IMU16: true
+              IMU17: true
+              Value: true
+            MarkerArray: true
+            Perception:
+              Aggregated Logs Loadbed: true
+              AggregatedLogs Loading Area: true
+              AggregatedLogs World: true
+              DetectedLogs: true
+              FittedLogs: true
+              Hesai: true
+              Image: true
+              Livox ortho image: true
+              LivoxLidar: true
+              PickedLogs: true
+              Region Filter: true
+              Region Filter Loading Area: true
+              Region Filter Loading Area Pose: true
+              Seyond: true
+              Target Slots: true
+              Value: true
+              Zed: true
+            Planning and Control:
+              CBMP planned path: true
+              Collision Bodies: true
+              Collision Bodies Full: true
+              MPC local path: true
+              Path: true
+              Path markers: true
+              Target: true
+              Value: true
+            PointCloud2: true
+            RobotModel Desired: true
+            RobotModel Elastic: true
+            RobotModel Rigid: true
+            TF: true
+            Value: true
+          Zoom Factor: 1
+      Enabled: true
+      Name: Perception
+    - Class: rviz_common/Group
+      Displays:
+        - Alpha: 1
+          Axes Length: 1
+          Axes Radius: 0.10000000149011612
+          Class: rviz_default_plugins/Pose
+          Color: 255; 25; 0
+          Enabled: true
+          Head Length: 0.30000001192092896
+          Head Radius: 0.10000000149011612
+          Name: Best Unloading Spot
+          Shaft Length: 1
+          Shaft Radius: 0.05000000074505806
+          Shape: Axes
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /load_bed/best_unloading_spot
+          Value: true
+      Enabled: true
+      Name: Decision Making
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        cbp_block_axes: true
+        cbp_block_ids: true
+        cbp_blocks: true
+        cbp_static_scene: true
+        cbp_static_scene_ids: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cbp/block_world_model_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        cbp_block_goal_ids: true
+        cbp_block_goals: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cbp/block_goal_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Detector blocks (accepted)
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /markers
+      Value: true
+    - Class: rviz_common/Group
+      Displays:
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Candidates (incl. rejected)
+          Namespaces:
+            {}
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery/detector/markers
+          Value: true
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 200; 200; 200
+          Color Transformer: FlatColor
+          Decay Time: 0
+          Enabled: false
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 4096
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: 1 Input cloud (scene-bounded)
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 2
+          Size (m): 0.019999999552965164
+          Style: Points
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery/detector/input_cloud
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: false
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 255; 170; 0
+          Color Transformer: FlatColor
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 4096
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: 2 After gripper self-filter
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 2
+          Size (m): 0.019999999552965164
+          Style: Points
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery/detector/geometry_cloud
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz_default_plugins/PointCloud2
+          Color: 0; 255; 128
+          Color Transformer: FlatColor
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Max Intensity: 4096
+          Min Color: 0; 0; 0
+          Min Intensity: 0
+          Name: 3 Above ground (clustered)
+          Position Transformer: XYZ
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.029999999329447746
+          Style: Flat Squares
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery/detector/above_ground_cloud
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+        - Class: rviz_default_plugins/Image
+          Enabled: false
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Detector RGB input
+          Normalize Range: true
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery/detector/rgb_input
+          Value: false
+        - Class: rviz_default_plugins/Image
+          Enabled: true
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Scene discovery pose overlay
+          Normalize Range: true
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /cbp/debug/scene_discovery_pose_overlay
+          Value: true
+      Enabled: true
+      Name: Detector debug
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Placement refinement residual
+      Namespaces:
+        placement_residual: true
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /assembly_operator/refinement_markers
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: ""
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: ""
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cbp/debug/registration/cleaned_cutout
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0.5
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /livox/points
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Image
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /blackfly_rotated/image_rect
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 175; 175; 175
+    Fixed Frame: world
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: rviz_default_plugins/SetInitialPose
+      Covariance x: 0.25
+      Covariance y: 0.25
+      Covariance yaw: 0.06853891909122467
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /goal_pose
+    - Class: rviz_default_plugins/PublishPoint
+      Single click: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /clicked_point
+    - Class: wood_log_rviz_plugins/LogPicker
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /picked_logs
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 17.970518112182617
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: -5.31685209274292
+        Y: 0.9262973070144653
+        Z: 1.0490342378616333
+      Focal Shape Fixed Size: false
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.3126732110977173
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 3.778322219848633
+    Saved: ~
+Window Geometry:
+  AssemblyWorkflowPanel:
+    collapsed: false
+  BehaviorTreePanel:
+    collapsed: false
+  Displays:
+    collapsed: false
+  Height: 1150
+  Hide Left Dock: false
+  Hide Right Dock: false
+  Image:
+    collapsed: false
+  Livox ortho image:
+    collapsed: false
+  MotionPlanningPanel:
+    collapsed: false
+  PerceptionControlPanel:
+    collapsed: false
+  PlanControlPanel:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd00000004000000000000017900000428fc020000000dfb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000005a000000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b000000e2000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000014005a00650064002000430061006d0065007200610000000000ffffffff0000000000000000fb00000012005a0065006400430061006d0065007200610200000483000005a0000002fd00000243fb00000022004c00690076006f00780020006f007200740068006f00200069006d006100670065000000032c000000cc0000002800fffffffb0000002c00500065007200630065007000740069006f006e0043006f006e00740072006f006c00500061006e0065006c0100000123000002690000021100fffffffb0000000a0049006d0061006700650100000392000000d10000002800ffffff000000010000021000000428fc0200000006fb000000200050006c0061006e0043006f006e00740072006f006c00500061006e0065006c010000003b000000d5000000d500fffffffc000001160000034d0000034d0100001afa000000000100000005fb0000002a0041007300730065006d0062006c00790057006f0072006b0066006c006f007700500061006e0065006c0100000000ffffffff000000f600fffffffb00000022004200650068006100760069006f0072005400720065006500500061006e0065006c0100000000ffffffff000000a300fffffffb0000002000540069006d006200650072004300720061006e006500500061006e0065006c0100000000ffffffff0000021000fffffffb00000026004d006f00740069006f006e0050006c0061006e006e0069006e006700500061006e0065006c01000004ea0000024e0000018800fffffffb00000052007200760069007a005f006c006900660065006300790063006c0065005f0070006c007500670069006e0020005200760069007a004c006900660065006300790063006c00650050006c007500670069006e02000007c60000013b0000021900000247fb0000000a0049006d0061006700650000000386000000570000002800fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000031a000000c3000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b20000000000000000000000020000073800000057fc0100000002fb00000006005a00650064020000033c000005a00000044400000336fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004420000003efc0100000002fb0000000800540069006d00650100000000000004420000000000000000fb0000000800540069006d00650100000000000004500000000000000000000003100000042800000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  TimberCranePanel:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false
+  Width: 1701
+  X: 1788
+  Y: 134
+  Zed:
+    collapsed: false
+  ZedCamera:
+    collapsed: false
