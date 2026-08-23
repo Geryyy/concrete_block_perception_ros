@@ -96,7 +96,7 @@ def generate_launch_description():
     # -----------------------
     rosbag_nodes_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathSubstitution(FindPackageShare("epsilon_crane_bringup_hmi"))
+            PathSubstitution(FindPackageShare("epsilon_crane_replay"))
             / "launch"
             / "rosbag_replay_nodes.launch.py"
         ),
