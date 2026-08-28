@@ -23,6 +23,10 @@ find_package(std_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
+# Open3DConfig.cmake forces CMP0072 to OLD, which CMake reports as a deprecation
+# warning. Silence it across the Open3D lookups -- including the one in
+# external/pcd_block_estimation, which is a separate repo we do not patch.
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 cmake_policy(SET CMP0072 NEW)
 find_package(Open3D CONFIG REQUIRED)
 find_package(message_filters REQUIRED)
@@ -37,6 +41,7 @@ find_package(concrete_block_perception_interfaces REQUIRED)
 # External library
 # ------------------------------------------------------------
 add_subdirectory(external/pcd_block_estimation)
+set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
 
 # ============================================================
 # BLOCK DETECTION TRACKING NODE
