@@ -1,15 +1,21 @@
-from launch import LaunchDescription
 import glob
 import os
 
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+    TimerAction,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 
 def cuda_library_path():
-    paths = glob.glob("/usr/local/lib/python3.10/dist-packages/nvidia/*/lib")
+    paths = glob.glob("/usr/local/lib/python3.*/dist-packages/nvidia/*/lib")
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     if existing:
         paths.append(existing)
@@ -24,7 +30,9 @@ def generate_launch_description():
 
     model_arg = DeclareLaunchArgument(
         "model_path",
-        default_value=PathJoinSubstitution([pkg_dir, "config", "yolo26n_seg_best.onnx"]),
+        default_value=PathJoinSubstitution(
+            [pkg_dir, "config", "yolo26n_seg_best.onnx"]
+        ),
         description="Path to YOLO segmentation model.",
     )
     labels_arg = DeclareLaunchArgument(
@@ -75,7 +83,9 @@ def generate_launch_description():
             "use_gpu": LaunchConfiguration("use_gpu"),
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "perception_mode": LaunchConfiguration("perception_mode"),
-            "world_model_overlay_params_file": LaunchConfiguration("world_model_overlay_params_file"),
+            "world_model_overlay_params_file": LaunchConfiguration(
+                "world_model_overlay_params_file"
+            ),
         }.items(),
     )
 
@@ -91,7 +101,9 @@ def generate_launch_description():
             "use_gpu": LaunchConfiguration("use_gpu"),
             "conf_threshold": LaunchConfiguration("yolo_conf_threshold"),
             "image_topic": image_topic,
-            "timing_log_every_n_frames": LaunchConfiguration("yolo_timing_log_every_n_frames"),
+            "timing_log_every_n_frames": LaunchConfiguration(
+                "yolo_timing_log_every_n_frames"
+            ),
         }.items(),
     )
 
