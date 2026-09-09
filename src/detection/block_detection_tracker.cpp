@@ -1,6 +1,6 @@
 #include "concrete_block_perception/detection/block_detection_tracker.hpp"
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
 
 #include "concrete_block_perception/utils/img_utils.hpp"

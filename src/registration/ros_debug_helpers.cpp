@@ -1,6 +1,6 @@
 #include "concrete_block_perception/registration/ros_debug_helpers.hpp"
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <filesystem>
 #include <iomanip>

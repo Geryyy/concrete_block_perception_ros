@@ -1,5 +1,5 @@
 #include "concrete_block_perception/utils/img_utils.hpp"
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
 cv::Mat extract_mask_roi(
   const cv::Mat & full_mask,

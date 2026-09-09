@@ -14,6 +14,7 @@ endif()
 # ROS dependencies
 # ------------------------------------------------------------
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -97,6 +98,7 @@ target_link_libraries(block_registration_node
 )
 
 ament_target_dependencies(block_registration_node
+  ament_index_cpp
   concrete_block_perception_interfaces
   rclcpp
   rclcpp_action
